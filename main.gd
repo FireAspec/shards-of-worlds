@@ -2,6 +2,7 @@ extends Control
 
 const SAVE_PATH := "user://shards_save.json"
 const AUTOSAVE_INTERVAL := 5.0
+const SfxBank = preload("res://sfx_bank.gd")
 
 var shards: float = 0.0
 var total_shards: float = 0.0
@@ -22,20 +23,27 @@ var upgrades := [
     {"name":"Фабрика осколков", "base":125000.0, "growth":1.86, "count":0, "kind":"auto", "value":2400.0, "desc":"+2.4K осколков/сек"},
     {"name":"Орбитальный сборщик", "base":2500000.0, "growth":1.9, "count":0, "kind":"auto", "value":42000.0, "desc":"+42K осколков/сек"},
     {"name":"Межмировой комплекс", "base":60000000.0, "growth":1.94, "count":0, "kind":"auto", "value":900000.0, "desc":"+900K осколков/сек"},
-    {"name":"Сингулярный экстрактор", "base":1800000000.0, "growth":1.98, "count":0, "kind":"auto", "value":22000000.0, "desc":"+22M осколков/сек"}
+    {"name":"Сингулярный экстрактор", "base":1800000000.0, "growth":1.98, "count":0, "kind":"auto", "value":22000000.0, "desc":"+22M осколков/сек"},
+    {"name":"Контур вероятностей", "base":35000000000.0, "growth":1.92, "count":0, "kind":"auto", "value":400000000.0, "desc":"+400M осколков/сек"},
+    {"name":"Лунный кластер", "base":800000000000.0, "growth":1.9, "count":0, "kind":"auto", "value":12000000000.0, "desc":"+12B осколков/сек"},
+    {"name":"Ткацкий станок времени", "base":20000000000000.0, "growth":1.88, "count":0, "kind":"auto", "value":400000000000.0, "desc":"+400B осколков/сек"},
+    {"name":"Реконструктор миров", "base":500000000000000.0, "growth":1.85, "count":0, "kind":"auto", "value":15000000000000.0, "desc":"+15T осколков/сек"}
 ]
 
 var chapters := [
-    {"need":0.0, "title":"Глава I — Пустая комната", "subtitle":"Ты находишь устройство, которое помнит исчезнувшие миры.", "symbol":"◇"},
-    {"need":100.0, "title":"Глава II — Первый голос", "subtitle":"В шуме осколков звучит голос неизвестной девушки.", "symbol":"✦"},
-    {"need":1000.0, "title":"Глава III — Сад под двумя лунами", "subtitle":"В памяти устройства проявляется первый восстановленный мир.", "symbol":"☾"},
-    {"need":10000.0, "title":"Глава IV — Город без утра", "subtitle":"В городе всегда ночь, но окна продолжают гореть.", "symbol":"▦"},
-    {"need":100000.0, "title":"Глава V — Девушка из архива", "subtitle":"Она наконец называет своё имя, но просит не верить устройству.", "symbol":"✧"},
-    {"need":1000000.0, "title":"Глава VI — Машина лжёт", "subtitle":"Часть восстановленных воспоминаний противоречит другой части.", "symbol":"⌁"},
-    {"need":10000000.0, "title":"Глава VII — Мир до катастрофы", "subtitle":"Ты видишь момент, когда всё ещё можно было остановить.", "symbol":"◉"},
-    {"need":100000000.0, "title":"Глава VIII — Последний протокол", "subtitle":"Устройство открывает скрытую функцию: выбрать один мир для полного возврата.", "symbol":"⬡"},
-    {"need":1000000000.0, "title":"Глава IX — Цена возвращения", "subtitle":"Каждый восстановленный мир стирает часть другого.", "symbol":"✺"},
-    {"need":1000000000000.0, "title":"Глава X — Осколки миров", "subtitle":"Финальная память показывает, кем был тот, кто запустил катастрофу.", "symbol":"∞"}
+    {"need":0.0, "title":"Глава I — Первое отражение", "subtitle":"Архив оживает и показывает первое устойчивое отражение.", "symbol":"◇", "reward":"Судзунэ Хорикита", "art":"res://assets/gallery/01_horikita.png"},
+    {"need":100.0, "title":"Глава II — Тёплый сигнал", "subtitle":"Осколки складываются в новое воспоминание.", "symbol":"✦", "reward":"Хонами Ичиносэ", "art":"res://assets/gallery/02_ichinose.png"},
+    {"need":1000.0, "title":"Глава III — Лунный архив", "subtitle":"В памяти появляется мир, где всё решалось одним выбором.", "symbol":"☾", "reward":"Кагуя Синомия", "art":"res://assets/gallery/03_kaguya.png"},
+    {"need":10000.0, "title":"Глава IV — Красная линия", "subtitle":"Стабилизатор впервые собирает полноценную сцену.", "symbol":"◈", "reward":"Асуна Юки", "art":"res://assets/gallery/04_asuna.png"},
+    {"need":100000.0, "title":"Глава V — След чужого мира", "subtitle":"Архив начинает открывать образы из всё более далёких реальностей.", "symbol":"✧", "reward":"Элизабет Лайонес", "art":"res://assets/gallery/05_elizabeth.png"},
+    {"need":1000000.0, "title":"Глава VI — Риск", "subtitle":"Система предлагает опасную ветку восстановления.", "symbol":"♠", "reward":"Юмэко Джабами", "art":"res://assets/gallery/06_yumeko.png"},
+    {"need":10000000.0, "title":"Глава VII — Серебряный свет", "subtitle":"Отражение удерживается уже без ручной стабилизации.", "symbol":"❄", "reward":"Эмилия", "art":"res://assets/gallery/07_emilia.png"},
+    {"need":100000000.0, "title":"Глава VIII — Долгая память", "subtitle":"Устройство начинает помнить то, что старше его самого.", "symbol":"✤", "reward":"Фрирен", "art":"res://assets/gallery/08_frieren.png"},
+    {"need":1000000000.0, "title":"Глава IX — Свет сцены", "subtitle":"Архив перестаёт быть безмолвным и отвечает вспышкой.", "symbol":"★", "reward":"Руби Хосино", "art":"res://assets/gallery/09_ruby.png"},
+    {"need":10000000000.0, "title":"Глава X — Звезда архива", "subtitle":"Восстановление достигает уровня, который раньше считался невозможным.", "symbol":"✺", "reward":"Ай Хосино", "art":"res://assets/gallery/10_ai.png"},
+    {"need":100000000000.0, "title":"Глава XI — Красный код", "subtitle":"Внутри ядра обнаруживается закрытая область памяти.", "symbol":"⌁", "reward":"Зеро Ту", "art":"res://assets/gallery/11_zero_two.png"},
+    {"need":10000000000000.0, "title":"Глава XII — Последняя магия", "subtitle":"Почти все фрагменты заняли свои места.", "symbol":"✦", "reward":"Рокси Мигурдия", "art":"res://assets/gallery/12_roxy.png"},
+    {"need":1000000000000000.0, "title":"Глава XIII — Совершенство", "subtitle":"Финальный архив открывается совсем не так, как ожидалось.", "symbol":"∞", "reward":"Аянокоджи", "art":"res://assets/gallery/13_ayanokoji.png"}
 ]
 
 var shard_label: Label
@@ -56,11 +64,20 @@ var fx_layer: Control
 var bonus_clock: float = 18.0
 var rare_bonus_button: Button
 var last_click_fx_tier: int = 0
+var sfx_bank
+var gallery_button: Button
+var gallery_overlay: ColorRect
+var gallery_grid: GridContainer
+var gallery_preview: TextureRect
+var gallery_preview_text: Label
 
 func _ready() -> void:
     rng.randomize()
+    sfx_bank = SfxBank.new()
+    add_child(sfx_bank)
     _build_ui()
     _build_fx_layer()
+    _build_gallery_overlay()
     _load_game()
     _recalculate_stats()
     _apply_offline_progress()
@@ -127,6 +144,13 @@ func _build_ui() -> void:
     header.add_child(total_label)
     header.add_child(click_label)
     header.add_child(auto_label)
+
+    gallery_button = Button.new()
+    gallery_button.text = "ГАЛЕРЕЯ"
+    gallery_button.custom_minimum_size = Vector2(110, 38)
+    gallery_button.add_theme_font_size_override("font_size", 14)
+    gallery_button.pressed.connect(_toggle_gallery)
+    header.add_child(gallery_button)
 
     offline_label = Label.new()
     offline_label.text = ""
@@ -257,6 +281,129 @@ func _build_ui() -> void:
 
     _rebuild_upgrade_buttons()
 
+func _build_gallery_overlay() -> void:
+    gallery_overlay = ColorRect.new()
+    gallery_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    gallery_overlay.color = Color(0.025, 0.02, 0.07, 0.96)
+    gallery_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+    gallery_overlay.z_index = 200
+    gallery_overlay.visible = false
+    add_child(gallery_overlay)
+
+    var center := CenterContainer.new()
+    center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    gallery_overlay.add_child(center)
+
+    var panel := PanelContainer.new()
+    panel.custom_minimum_size = Vector2(1040, 620)
+    panel.add_theme_stylebox_override("panel", _panel_style(Color("101426"), 22))
+    center.add_child(panel)
+
+    var margin := MarginContainer.new()
+    margin.add_theme_constant_override("margin_left", 22)
+    margin.add_theme_constant_override("margin_right", 22)
+    margin.add_theme_constant_override("margin_top", 18)
+    margin.add_theme_constant_override("margin_bottom", 18)
+    panel.add_child(margin)
+
+    var layout := VBoxContainer.new()
+    layout.add_theme_constant_override("separation", 14)
+    margin.add_child(layout)
+
+    var top := HBoxContainer.new()
+    layout.add_child(top)
+
+    var title := Label.new()
+    title.text = "АРХИВ ОТРАЖЕНИЙ"
+    title.add_theme_font_size_override("font_size", 26)
+    title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    top.add_child(title)
+
+    var close := Button.new()
+    close.text = "Закрыть"
+    close.pressed.connect(_toggle_gallery)
+    top.add_child(close)
+
+    var content := HBoxContainer.new()
+    content.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    content.add_theme_constant_override("separation", 18)
+    layout.add_child(content)
+
+    var scroll := ScrollContainer.new()
+    scroll.custom_minimum_size = Vector2(520, 0)
+    scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    content.add_child(scroll)
+
+    gallery_grid = GridContainer.new()
+    gallery_grid.columns = 2
+    gallery_grid.add_theme_constant_override("h_separation", 10)
+    gallery_grid.add_theme_constant_override("v_separation", 10)
+    scroll.add_child(gallery_grid)
+
+    var preview_box := VBoxContainer.new()
+    preview_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    preview_box.add_theme_constant_override("separation", 12)
+    content.add_child(preview_box)
+
+    gallery_preview = TextureRect.new()
+    gallery_preview.custom_minimum_size = Vector2(430, 430)
+    gallery_preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+    gallery_preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+    preview_box.add_child(gallery_preview)
+
+    gallery_preview_text = Label.new()
+    gallery_preview_text.text = "Выбери открытое отражение."
+    gallery_preview_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    gallery_preview_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    gallery_preview_text.add_theme_font_size_override("font_size", 18)
+    gallery_preview_text.add_theme_color_override("font_color", Color("cbd7f7"))
+    preview_box.add_child(gallery_preview_text)
+
+    _rebuild_gallery_cards()
+
+func _toggle_gallery() -> void:
+    gallery_overlay.visible = not gallery_overlay.visible
+    if gallery_overlay.visible:
+        _rebuild_gallery_cards()
+        sfx_bank.play("open")
+
+func _rebuild_gallery_cards() -> void:
+    if not is_instance_valid(gallery_grid):
+        return
+    for child in gallery_grid.get_children():
+        child.queue_free()
+
+    for i in range(chapters.size()):
+        var ch = chapters[i]
+        var unlocked: bool = total_shards >= float(ch["need"])
+        var card := Button.new()
+        card.custom_minimum_size = Vector2(245, 104)
+        card.alignment = HORIZONTAL_ALIGNMENT_LEFT
+        card.add_theme_font_size_override("font_size", 15)
+        if unlocked:
+            card.text = "%02d  %s\n%s" % [i + 1, ch["reward"], ch["title"]]
+            card.pressed.connect(_show_gallery_entry.bind(i))
+        else:
+            card.text = "%02d  ???\nНужно: %s" % [i + 1, _compact(float(ch["need"]))]
+            card.disabled = true
+        gallery_grid.add_child(card)
+
+func _show_gallery_entry(index: int) -> void:
+    var ch = chapters[index]
+    var art_path: String = String(ch["art"])
+    gallery_preview.texture = null
+
+    if ResourceLoader.exists(art_path):
+        var texture = load(art_path)
+        if texture is Texture2D:
+            gallery_preview.texture = texture
+            gallery_preview_text.text = "%s\n%s" % [ch["reward"], ch["subtitle"]]
+        else:
+            gallery_preview_text.text = "%s\nИллюстрация готовится." % ch["reward"]
+    else:
+        gallery_preview_text.text = "%s\nИллюстрация готовится." % ch["reward"]
+    sfx_bank.play("open")
+
 func _build_fx_layer() -> void:
     fx_layer = Control.new()
     fx_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -323,6 +470,7 @@ func _on_core_pressed() -> void:
     shards += amount
     total_shards += amount
     event_label.text = ("КРИТИЧЕСКИЙ ИМПУЛЬС! +%s" if critical else "+%s осколков") % _compact(amount)
+    sfx_bank.play("crit" if critical else "click")
     _spawn_float_text(amount, critical)
     _spawn_click_particles(critical)
     _animate_click(critical)
@@ -452,6 +600,7 @@ func _buy_upgrade(index: int) -> void:
     upgrades[index]["count"] = int(upgrades[index]["count"]) + 1
     _recalculate_stats()
     event_label.text = "%s улучшен до уровня %d." % [upgrades[index]["name"], upgrades[index]["count"]]
+    sfx_bank.play("buy")
     _spawn_level_up(upgrades[index]["name"])
     _refresh_all()
     _save_game()
@@ -504,7 +653,9 @@ func _chapter_reveal() -> void:
     var ch = chapters[current_chapter]
     event_label.text = "ОТКРЫТА НОВАЯ ГЛАВА: %s" % ch["title"]
     chapter_symbol.text = ch["symbol"]
-    _chapter_flash(ch["title"])
+    sfx_bank.play("unlock")
+    _chapter_flash("%s  •  %s" % [ch["title"], ch["reward"]])
+    _rebuild_gallery_cards()
 
     var tween := create_tween()
     chapter_label.modulate.a = 0.0
@@ -608,6 +759,7 @@ func _collect_rare_bonus(button: Button) -> void:
     shards += reward
     total_shards += reward
     event_label.text = "РЕДКИЙ БОНУС! +%s осколков" % _compact(reward)
+    sfx_bank.play("bonus")
     _spawn_float_text(reward, true)
     _spawn_click_particles(true)
     if rare_bonus_button == button:
@@ -647,7 +799,7 @@ func _refresh_chapter() -> void:
 func _refresh_chapter_progress() -> void:
     if current_chapter >= chapters.size() - 1:
         chapter_progress.value = 100
-        chapter_need_label.text = "Все 10 глав открыты. Финальная иллюстрация доступна."
+        chapter_need_label.text = "Все 13 отражений открыты. Финальная награда доступна."
         return
     var from_need: float = float(chapters[current_chapter]["need"])
     var next_need: float = float(chapters[current_chapter + 1]["need"])
