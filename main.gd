@@ -37,19 +37,19 @@ var upgrades := [
 ]
 
 var chapters := [
-    {"need":0.0, "title":"Глава I — Первое отражение", "subtitle":"Архив оживает и показывает первое устойчивое отражение.", "symbol":"◇", "reward":"Судзунэ Хорикита", "art":"res://assets/gallery/01_horikita.png"},
-    {"need":100.0, "title":"Глава II — Тёплый сигнал", "subtitle":"Осколки складываются в новое воспоминание.", "symbol":"✦", "reward":"Хонами Ичиносэ", "art":"res://assets/gallery/02_ichinose.png"},
-    {"need":1000.0, "title":"Глава III — Лунный архив", "subtitle":"В памяти появляется мир, где всё решалось одним выбором.", "symbol":"☾", "reward":"Кагуя Синомия", "art":"res://assets/gallery/03_kaguya.png"},
-    {"need":10000.0, "title":"Глава IV — Красная линия", "subtitle":"Стабилизатор впервые собирает полноценную сцену.", "symbol":"◈", "reward":"Асуна Юки", "art":"res://assets/gallery/04_asuna.png"},
-    {"need":100000.0, "title":"Глава V — След чужого мира", "subtitle":"Архив начинает открывать образы из всё более далёких реальностей.", "symbol":"✧", "reward":"Элизабет Лайонес", "art":"res://assets/gallery/05_elizabeth.png"},
-    {"need":1000000.0, "title":"Глава VI — Риск", "subtitle":"Система предлагает опасную ветку восстановления.", "symbol":"♠", "reward":"Юмэко Джабами", "art":"res://assets/gallery/06_yumeko.png"},
-    {"need":10000000.0, "title":"Глава VII — Серебряный свет", "subtitle":"Отражение удерживается уже без ручной стабилизации.", "symbol":"❄", "reward":"Эмилия", "art":"res://assets/gallery/07_emilia.png"},
-    {"need":100000000.0, "title":"Глава VIII — Долгая память", "subtitle":"Устройство начинает помнить то, что старше его самого.", "symbol":"✤", "reward":"Фрирен", "art":"res://assets/gallery/08_frieren.png"},
-    {"need":1000000000.0, "title":"Глава IX — Тихий вечер", "subtitle":"Архив открывает спокойное отражение, за которым чувствуется скрытая опасность.", "symbol":"◆", "reward":"Йор Форджер", "art":"res://assets/gallery/09_yor.png"},
-    {"need":10000000000.0, "title":"Глава X — Свет сцены", "subtitle":"Восстановленное отражение отвечает яркой вспышкой со сцены.", "symbol":"★", "reward":"Руби Хосино", "art":"res://assets/gallery/10_ruby.png"},
-    {"need":100000000000.0, "title":"Глава XI — Звезда архива", "subtitle":"Система впервые удерживает образ даже во время перегрузки ядра.", "symbol":"✺", "reward":"Ай Хосино", "art":"res://assets/gallery/11_ai.png"},
-    {"need":10000000000000.0, "title":"Глава XII — Последняя магия", "subtitle":"Почти все фрагменты заняли свои места.", "symbol":"✦", "reward":"Рокси Мигурдия", "art":"res://assets/gallery/12_roxy.png"},
-    {"need":1000000000000000.0, "title":"Глава XIII — Совершенство", "subtitle":"Финальный архив открывается совсем не так, как ожидалось.", "symbol":"∞", "reward":"Аянокоджи", "art":"res://assets/gallery/13_ayanokoji.png"}
+    {"need":0.0, "title":"Глава I — Первое отражение", "subtitle":"Архив оживает и показывает первое устойчивое отражение.", "story":"Ты находишь повреждённый Архив. Он не помнит, кто его создал, но просит одно: собирать осколки и возвращать утраченные отражения.", "symbol":"◇", "reward":"Судзунэ Хорикита", "art":"res://assets/gallery/01_horikita.png"},
+    {"need":100.0, "title":"Глава II — Тёплый сигнал", "subtitle":"Осколки складываются в новое воспоминание.", "story":"Второе отражение приходит вместе с голосом: «Не доверяй Архиву полностью». Сообщение обрывается прежде, чем ты успеваешь ответить.", "symbol":"✦", "reward":"Хонами Ичиносэ", "art":"res://assets/gallery/02_ichinose.png"},
+    {"need":1000.0, "title":"Глава III — Лунный архив", "subtitle":"В памяти появляется мир, где всё решалось одним выбором.", "story":"Ты замечаешь странность: Архив не просто восстанавливает изображения. Он оценивает их и будто бы составляет собственную коллекцию.", "symbol":"☾", "reward":"Кагуя Синомия", "art":"res://assets/gallery/03_kaguya.png"},
+    {"need":10000.0, "title":"Глава IV — Красная линия", "subtitle":"Стабилизатор впервые собирает полноценную сцену.", "story":"На секунду за изображением проявляется чужая комната и силуэт человека у терминала. Лицо скрыто помехами.", "symbol":"◈", "reward":"Асуна Юки", "art":"res://assets/gallery/04_asuna.png"},
+    {"need":100000.0, "title":"Глава V — След чужого мира", "subtitle":"Архив начинает открывать образы из всё более далёких реальностей.", "story":"Система сообщает, что восстановлено меньше половины пути. Ты впервые видишь строку, которой раньше не было: «Поиск совершенного отражения продолжается».", "symbol":"✧", "reward":"Элизабет Лайонес", "art":"res://assets/gallery/05_elizabeth.png"},
+    {"need":1000000.0, "title":"Глава VI — Риск", "subtitle":"Система предлагает опасную ветку восстановления.", "story":"Архив перегревается и начинает выбрасывать редкие осколки. Они нестабильны, зато на несколько секунд резко ускоряют всю систему.", "symbol":"♠", "reward":"Юмэко Джабами", "art":"res://assets/gallery/06_yumeko.png"},
+    {"need":10000000.0, "title":"Глава VII — Серебряный свет", "subtitle":"Отражение удерживается уже без ручной стабилизации.", "story":"Автоматизация работает почти самостоятельно. Но чем меньше ты нужен машине, тем чаще она спрашивает: «Ты действительно хочешь увидеть финал?»", "symbol":"❄", "reward":"Эмилия", "art":"res://assets/gallery/07_emilia.png"},
+    {"need":100000000.0, "title":"Глава VIII — Долгая память", "subtitle":"Устройство начинает помнить то, что старше его самого.", "story":"В старой памяти находится запись создателя Архива: он хотел собрать самые ценные отражения множества миров и оставить лучшее напоследок.", "symbol":"✤", "reward":"Фрирен", "art":"res://assets/gallery/08_frieren.png"},
+    {"need":1000000000.0, "title":"Глава IX — Тихий вечер", "subtitle":"Архив открывает спокойное отражение, за которым чувствуется скрытая опасность.", "story":"Финальные ячейки защищены отдельным протоколом. Названия следующих наград стёрты намеренно. Архив явно не хочет портить сюрприз.", "symbol":"◆", "reward":"Йор Форджер", "art":"res://assets/gallery/09_yor.png"},
+    {"need":10000000000.0, "title":"Глава X — Свет сцены", "subtitle":"Восстановленное отражение отвечает яркой вспышкой со сцены.", "story":"Внутри ядра появляется шкала «Совершенство», но без процентов. Каждый новый осколок заставляет её сиять всё ярче.", "symbol":"★", "reward":"Руби Хосино", "art":"res://assets/gallery/10_ruby.png"},
+    {"need":100000000000.0, "title":"Глава XI — Звезда архива", "subtitle":"Система впервые удерживает образ даже во время перегрузки ядра.", "story":"До конца остаётся совсем немного. Последние данные зашифрованы одной фразой: «Идеал нельзя описать. Его можно только увидеть».", "symbol":"✺", "reward":"Ай Хосино", "art":"res://assets/gallery/11_ai.png"},
+    {"need":10000000000000.0, "title":"Глава XII — Последняя магия", "subtitle":"Почти все фрагменты заняли свои места.", "story":"Архив подтверждает: следующее отражение — последнее. Ни имени, ни силуэта, ни подсказки. Только абсурдно высокая цена восстановления.", "symbol":"✦", "reward":"Рокси Мигурдия", "art":"res://assets/gallery/12_roxy.png"},
+    {"need":1000000000000000.0, "title":"Глава XIII — Совершенство", "subtitle":"Финальный архив открывается совсем не так, как ожидалось.", "story":"Архив торжественно завершает поиск. После миллиардов, триллионов и квадриллиона осколков система без единой доли сомнения объявляет: «Совершенное отражение найдено». Спорить с ней уже поздно.", "symbol":"∞", "reward":"Аянокоджи", "art":"res://assets/gallery/13_ayanokoji.png"}
 ]
 
 var shard_label: Label
@@ -81,6 +81,7 @@ var reward_card: PanelContainer
 var reward_art: TextureRect
 var reward_name: Label
 var reward_title: Label
+var reward_story: Label
 var boost_label: Label
 var current_art: TextureRect
 var current_art_frame: Panel
@@ -484,7 +485,7 @@ func _build_reward_overlay() -> void:
     reward_overlay.add_child(center)
 
     reward_card = PanelContainer.new()
-    reward_card.custom_minimum_size = Vector2(520, 610)
+    reward_card.custom_minimum_size = Vector2(560, 690)
     reward_card.add_theme_stylebox_override("panel", _panel_style(Color("171226"), 26))
     reward_card.pivot_offset = Vector2(260, 305)
     center.add_child(reward_card)
@@ -509,7 +510,7 @@ func _build_reward_overlay() -> void:
     box.add_child(reward_title)
 
     reward_art = TextureRect.new()
-    reward_art.custom_minimum_size = Vector2(450, 450)
+    reward_art.custom_minimum_size = Vector2(420, 420)
     reward_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
     reward_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
     box.add_child(reward_art)
@@ -520,6 +521,15 @@ func _build_reward_overlay() -> void:
     reward_name.add_theme_font_size_override("font_size", 28)
     reward_name.add_theme_color_override("font_color", Color("ffffff"))
     box.add_child(reward_name)
+
+    reward_story = Label.new()
+    reward_story.custom_minimum_size = Vector2(0, 66)
+    reward_story.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    reward_story.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+    reward_story.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    reward_story.add_theme_font_size_override("font_size", 16)
+    reward_story.add_theme_color_override("font_color", Color("bbc8e8"))
+    box.add_child(reward_story)
 
     var close := Button.new()
     close.text = "В галерею"
@@ -535,6 +545,7 @@ func _show_reward_overlay(index: int) -> void:
     reward_title.text = "ТЫ ДОСТИГ СОВЕРШЕНСТВА" if is_final else "НОВОЕ ОТРАЖЕНИЕ"
     reward_title.add_theme_color_override("font_color", Color("ffd978") if is_final else Color("f7dfff"))
     reward_name.text = String(ch["reward"])
+    reward_story.text = String(ch["story"])
     reward_art.texture = null
     var art_path: String = String(ch["art"])
     var texture: Texture2D = GalleryArtLoader.load_texture(art_path)
