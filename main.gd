@@ -3,6 +3,7 @@ extends Control
 const SAVE_PATH := "user://shards_save.json"
 const AUTOSAVE_INTERVAL := 5.0
 const SfxBank = preload("res://sfx_bank.gd")
+const AmbientFx = preload("res://ambient_fx.gd")
 
 var shards: float = 0.0
 var total_shards: float = 0.0
@@ -118,6 +119,9 @@ func _build_ui() -> void:
     bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     bg.color = Color("090b18")
     add_child(bg)
+
+    var ambient := AmbientFx.new()
+    add_child(ambient)
 
     var margin := MarginContainer.new()
     margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
