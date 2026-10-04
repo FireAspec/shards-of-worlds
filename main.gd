@@ -40,9 +40,9 @@ var chapters := [
     {"need":1000000.0, "title":"Глава VI — Риск", "subtitle":"Система предлагает опасную ветку восстановления.", "symbol":"♠", "reward":"Юмэко Джабами", "art":"res://assets/gallery/06_yumeko.png"},
     {"need":10000000.0, "title":"Глава VII — Серебряный свет", "subtitle":"Отражение удерживается уже без ручной стабилизации.", "symbol":"❄", "reward":"Эмилия", "art":"res://assets/gallery/07_emilia.png"},
     {"need":100000000.0, "title":"Глава VIII — Долгая память", "subtitle":"Устройство начинает помнить то, что старше его самого.", "symbol":"✤", "reward":"Фрирен", "art":"res://assets/gallery/08_frieren.png"},
-    {"need":1000000000.0, "title":"Глава IX — Свет сцены", "subtitle":"Архив перестаёт быть безмолвным и отвечает вспышкой.", "symbol":"★", "reward":"Руби Хосино", "art":"res://assets/gallery/09_ruby.png"},
-    {"need":10000000000.0, "title":"Глава X — Звезда архива", "subtitle":"Восстановление достигает уровня, который раньше считался невозможным.", "symbol":"✺", "reward":"Ай Хосино", "art":"res://assets/gallery/10_ai.png"},
-    {"need":100000000000.0, "title":"Глава XI — Красный код", "subtitle":"Внутри ядра обнаруживается закрытая область памяти.", "symbol":"⌁", "reward":"Зеро Ту", "art":"res://assets/gallery/11_zero_two.png"},
+    {"need":1000000000.0, "title":"Глава IX — Тихий вечер", "subtitle":"Архив открывает спокойное отражение, за которым чувствуется скрытая опасность.", "symbol":"◆", "reward":"Йор Форджер", "art":"res://assets/gallery/09_yor.png"},
+    {"need":10000000000.0, "title":"Глава X — Свет сцены", "subtitle":"Восстановленное отражение отвечает яркой вспышкой со сцены.", "symbol":"★", "reward":"Руби Хосино", "art":"res://assets/gallery/10_ruby.png"},
+    {"need":100000000000.0, "title":"Глава XI — Звезда архива", "subtitle":"Система впервые удерживает образ даже во время перегрузки ядра.", "symbol":"✺", "reward":"Ай Хосино", "art":"res://assets/gallery/11_ai.png"},
     {"need":10000000000000.0, "title":"Глава XII — Последняя магия", "subtitle":"Почти все фрагменты заняли свои места.", "symbol":"✦", "reward":"Рокси Мигурдия", "art":"res://assets/gallery/12_roxy.png"},
     {"need":1000000000000000.0, "title":"Глава XIII — Совершенство", "subtitle":"Финальный архив открывается совсем не так, как ожидалось.", "symbol":"∞", "reward":"Аянокоджи", "art":"res://assets/gallery/13_ayanokoji.png"}
 ]
