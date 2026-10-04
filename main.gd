@@ -16,6 +16,8 @@ var crit_multiplier: float = 5.0
 var current_chapter: int = 0
 var last_unix: int = 0
 var autosave_clock: float = 0.0
+var boost_multiplier: float = 1.0
+var boost_time_left: float = 0.0
 var rng := RandomNumberGenerator.new()
 
 var upgrades := [
@@ -78,6 +80,7 @@ var reward_card: PanelContainer
 var reward_art: TextureRect
 var reward_name: Label
 var reward_title: Label
+var boost_label: Label
 var current_art: TextureRect
 var current_art_frame: Panel
 
@@ -98,8 +101,14 @@ func _ready() -> void:
     _start_idle_animation()
 
 func _process(delta: float) -> void:
+    if boost_time_left > 0.0:
+        boost_time_left = maxf(0.0, boost_time_left - delta)
+        if boost_time_left <= 0.0:
+            boost_multiplier = 1.0
+            event_label.text = "Резонанс угас. Система вернулась в обычный режим."
+
     if auto_rate > 0.0:
-        var gain: float = auto_rate * delta
+        var gain: float = auto_rate * boost_multiplier * delta
         shards += gain
         total_shards += gain
         _check_chapter_unlocks()
@@ -173,6 +182,13 @@ func _build_ui() -> void:
     offline_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     offline_label.add_theme_color_override("font_color", Color("8ddcff"))
     root.add_child(offline_label)
+
+    boost_label = Label.new()
+    boost_label.text = ""
+    boost_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    boost_label.add_theme_font_size_override("font_size", 16)
+    boost_label.add_theme_color_override("font_color", Color("ffd978"))
+    root.add_child(boost_label)
 
     var body := HBoxContainer.new()
     body.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -619,7 +635,7 @@ func _upgrade_style(can_buy: bool) -> StyleBoxFlat:
     return style
 
 func _on_core_pressed() -> void:
-    var amount: float = click_power
+    var amount: float = click_power * boost_multiplier
     var critical: bool = rng.randf() < crit_chance
     if critical:
         amount *= crit_multiplier
@@ -929,7 +945,9 @@ func _collect_rare_bonus(button: Button) -> void:
     var reward: float = maxf(click_power * 20.0, maxf(25.0, auto_rate * 8.0))
     shards += reward
     total_shards += reward
-    event_label.text = "РЕДКИЙ БОНУС! +%s осколков" % _compact(reward)
+    event_label.text = "РЕЗОНАНС! Доход удвоен на 15 секунд. +%s осколков" % _compact(reward)
+    boost_multiplier = 2.0
+    boost_time_left = 15.0
     sfx_bank.play("bonus")
     _spawn_float_text(reward, true)
     _spawn_click_particles(true)
@@ -955,8 +973,12 @@ func _refresh_all() -> void:
 func _refresh_topbar() -> void:
     shard_label.text = "Осколки: %s" % _compact(shards)
     total_label.text = "Всего: %s" % _compact(total_shards)
-    click_label.text = "Клик: +%s" % _compact(click_power)
-    auto_label.text = "/сек: %s" % _compact(auto_rate)
+    click_label.text = "Клик: +%s" % _compact(click_power * boost_multiplier)
+    auto_label.text = "/сек: %s" % _compact(auto_rate * boost_multiplier)
+    if boost_time_left > 0.0:
+        boost_label.text = "✦ РЕЗОНАНС ×2  •  %.1f сек." % boost_time_left
+    else:
+        boost_label.text = ""
 
 func _refresh_chapter() -> void:
     var ch = chapters[current_chapter]
