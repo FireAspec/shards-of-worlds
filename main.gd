@@ -494,7 +494,7 @@ func _show_reward_overlay(index: int) -> void:
         return
     var ch = chapters[index]
     var is_final: bool = index == chapters.size() - 1
-    reward_title.text = "ТЫ ДОШЁЛ ДО СОВЕРШЕНСТВА" if is_final else "НОВОЕ ОТРАЖЕНИЕ"
+    reward_title.text = "ТЫ ДОСТИГ СОВЕРШЕНСТВА" if is_final else "НОВОЕ ОТРАЖЕНИЕ"
     reward_title.add_theme_color_override("font_color", Color("ffd978") if is_final else Color("f7dfff"))
     reward_name.text = String(ch["reward"])
     reward_art.texture = null
