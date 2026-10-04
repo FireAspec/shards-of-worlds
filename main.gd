@@ -77,6 +77,8 @@ var reward_card: PanelContainer
 var reward_art: TextureRect
 var reward_name: Label
 var reward_title: Label
+var current_art: TextureRect
+var current_art_frame: Panel
 
 func _ready() -> void:
     rng.randomize()
@@ -213,11 +215,27 @@ func _build_ui() -> void:
     left.add_child(stage)
 
     var stage_holder := Control.new()
-    stage_holder.custom_minimum_size = Vector2(360, 300)
+    stage_holder.custom_minimum_size = Vector2(660, 300)
     stage.add_child(stage_holder)
 
+    current_art_frame = Panel.new()
+    current_art_frame.position = Vector2(0, 4)
+    current_art_frame.size = Vector2(286, 286)
+    current_art_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    current_art_frame.add_theme_stylebox_override("panel", _panel_style(Color("141a31"), 20))
+    stage_holder.add_child(current_art_frame)
+
+    current_art = TextureRect.new()
+    current_art.position = Vector2(8, 8)
+    current_art.size = Vector2(270, 270)
+    current_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+    current_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+    current_art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    current_art.modulate = Color(1.0, 1.0, 1.0, 0.96)
+    current_art_frame.add_child(current_art)
+
     core_glow = ColorRect.new()
-    core_glow.position = Vector2(55, 25)
+    core_glow.position = Vector2(355, 25)
     core_glow.size = Vector2(250, 250)
     core_glow.color = Color(0.24, 0.48, 1.0, 0.08)
     core_glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -225,7 +243,7 @@ func _build_ui() -> void:
 
     core_button = Button.new()
     core_button.text = "◇"
-    core_button.position = Vector2(80, 50)
+    core_button.position = Vector2(380, 50)
     core_button.size = Vector2(200, 200)
     core_button.add_theme_font_size_override("font_size", 74)
     core_button.add_theme_color_override("font_color", Color("eaf2ff"))
@@ -237,7 +255,7 @@ func _build_ui() -> void:
 
     chapter_symbol = Label.new()
     chapter_symbol.text = ""
-    chapter_symbol.position = Vector2(142, 258)
+    chapter_symbol.position = Vector2(442, 258)
     chapter_symbol.size = Vector2(80, 40)
     chapter_symbol.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     chapter_symbol.add_theme_font_size_override("font_size", 20)
@@ -710,6 +728,12 @@ func _start_idle_animation() -> void:
     tween.tween_property(core_glow, "scale", Vector2(1.08, 1.08), 1.4).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
     tween.tween_property(core_glow, "scale", Vector2(0.94, 0.94), 1.4).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
+    if is_instance_valid(current_art):
+        current_art.pivot_offset = current_art.size / 2.0
+        var art_tween := create_tween().set_loops()
+        art_tween.tween_property(current_art, "scale", Vector2(1.025, 1.025), 2.8).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+        art_tween.tween_property(current_art, "scale", Vector2.ONE, 2.8).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
 func _rebuild_upgrade_buttons() -> void:
     for child in upgrades_box.get_children():
         child.queue_free()
@@ -796,6 +820,14 @@ func _chapter_reveal() -> void:
     _chapter_flash("%s  •  %s" % [ch["title"], ch["reward"]])
     _rebuild_gallery_cards()
     _show_reward_overlay(current_chapter)
+
+    if is_instance_valid(current_art):
+        current_art.modulate.a = 0.0
+        current_art.scale = Vector2(0.94, 0.94)
+        var art_reveal := create_tween()
+        art_reveal.set_parallel(true)
+        art_reveal.tween_property(current_art, "modulate:a", 0.96, 0.55)
+        art_reveal.tween_property(current_art, "scale", Vector2.ONE, 0.55).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
     var tween := create_tween()
     chapter_label.modulate.a = 0.0
@@ -934,6 +966,15 @@ func _refresh_chapter() -> void:
     chapter_symbol.text = ch["symbol"]
     core_button.text = ch["symbol"]
     core_button.tooltip_text = "Текущее отражение: %s" % ch["reward"]
+
+    if is_instance_valid(current_art):
+        current_art.texture = null
+        var art_path: String = String(ch["art"])
+        if ResourceLoader.exists(art_path):
+            var texture = load(art_path)
+            if texture is Texture2D:
+                current_art.texture = texture
+
     var hue: float = float(current_chapter) / maxf(1.0, float(chapters.size() - 1))
     core_glow.color = Color.from_hsv(0.58 + hue * 0.18, 0.55, 1.0, 0.10)
 
