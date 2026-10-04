@@ -18,21 +18,22 @@ var last_unix: int = 0
 var autosave_clock: float = 0.0
 var boost_multiplier: float = 1.0
 var boost_time_left: float = 0.0
+var visible_upgrade_count: int = -1
 var rng := RandomNumberGenerator.new()
 
 var upgrades := [
-    {"name":"Укрепить импульс", "base":25.0, "growth":1.65, "count":0, "kind":"click", "value":1.0, "desc":"+1 к силе ручного импульса"},
-    {"name":"Микродрон", "base":60.0, "growth":1.72, "count":0, "kind":"auto", "value":1.0, "desc":"+1 осколок/сек"},
-    {"name":"Рой дронов", "base":650.0, "growth":1.78, "count":0, "kind":"auto", "value":12.0, "desc":"+12 осколков/сек"},
-    {"name":"Станция стабилизации", "base":8500.0, "growth":1.82, "count":0, "kind":"auto", "value":160.0, "desc":"+160 осколков/сек"},
-    {"name":"Фабрика осколков", "base":125000.0, "growth":1.86, "count":0, "kind":"auto", "value":2400.0, "desc":"+2.4K осколков/сек"},
-    {"name":"Орбитальный сборщик", "base":2500000.0, "growth":1.9, "count":0, "kind":"auto", "value":42000.0, "desc":"+42K осколков/сек"},
-    {"name":"Межмировой комплекс", "base":60000000.0, "growth":1.94, "count":0, "kind":"auto", "value":900000.0, "desc":"+900K осколков/сек"},
-    {"name":"Сингулярный экстрактор", "base":1800000000.0, "growth":1.98, "count":0, "kind":"auto", "value":22000000.0, "desc":"+22M осколков/сек"},
-    {"name":"Контур вероятностей", "base":35000000000.0, "growth":1.92, "count":0, "kind":"auto", "value":400000000.0, "desc":"+400M осколков/сек"},
-    {"name":"Лунный кластер", "base":800000000000.0, "growth":1.9, "count":0, "kind":"auto", "value":12000000000.0, "desc":"+12B осколков/сек"},
-    {"name":"Ткацкий станок времени", "base":20000000000000.0, "growth":1.88, "count":0, "kind":"auto", "value":400000000000.0, "desc":"+400B осколков/сек"},
-    {"name":"Реконструктор миров", "base":500000000000000.0, "growth":1.85, "count":0, "kind":"auto", "value":15000000000000.0, "desc":"+15T осколков/сек"}
+    {"name":"Укрепить импульс", "base":25.0, "growth":1.65, "count":0, "kind":"click", "value":1.0, "unlock":0.0, "desc":"+1 к силе ручного импульса"},
+    {"name":"Микродрон", "base":60.0, "growth":1.72, "count":0, "kind":"auto", "value":1.0, "unlock":25.0, "desc":"+1 осколок/сек"},
+    {"name":"Рой дронов", "base":650.0, "growth":1.78, "count":0, "kind":"auto", "value":12.0, "unlock":500.0, "desc":"+12 осколков/сек"},
+    {"name":"Станция стабилизации", "base":8500.0, "growth":1.82, "count":0, "kind":"auto", "value":160.0, "unlock":5000.0, "desc":"+160 осколков/сек"},
+    {"name":"Фабрика осколков", "base":125000.0, "growth":1.86, "count":0, "kind":"auto", "value":2400.0, "unlock":50000.0, "desc":"+2.4K осколков/сек"},
+    {"name":"Орбитальный сборщик", "base":2500000.0, "growth":1.9, "count":0, "kind":"auto", "value":42000.0, "unlock":1000000.0, "desc":"+42K осколков/сек"},
+    {"name":"Межмировой комплекс", "base":60000000.0, "growth":1.94, "count":0, "kind":"auto", "value":900000.0, "unlock":20000000.0, "desc":"+900K осколков/сек"},
+    {"name":"Сингулярный экстрактор", "base":1800000000.0, "growth":1.98, "count":0, "kind":"auto", "value":22000000.0, "unlock":500000000.0, "desc":"+22M осколков/сек"},
+    {"name":"Контур вероятностей", "base":35000000000.0, "growth":1.92, "count":0, "kind":"auto", "value":400000000.0, "unlock":10000000000.0, "desc":"+400M осколков/сек"},
+    {"name":"Лунный кластер", "base":800000000000.0, "growth":1.9, "count":0, "kind":"auto", "value":12000000000.0, "unlock":250000000000.0, "desc":"+12B осколков/сек"},
+    {"name":"Ткацкий станок времени", "base":20000000000000.0, "growth":1.88, "count":0, "kind":"auto", "value":400000000000.0, "unlock":5000000000000.0, "desc":"+400B осколков/сек"},
+    {"name":"Реконструктор миров", "base":500000000000000.0, "growth":1.85, "count":0, "kind":"auto", "value":15000000000000.0, "unlock":100000000000000.0, "desc":"+15T осколков/сек"}
 ]
 
 var chapters := [
@@ -123,6 +124,9 @@ func _process(delta: float) -> void:
         _save_game()
     _refresh_topbar()
     _refresh_chapter_progress()
+    var available_count: int = _available_upgrade_count()
+    if available_count != visible_upgrade_count:
+        _rebuild_upgrade_buttons()
 
 func _notification(what: int) -> void:
     if what == NOTIFICATION_WM_CLOSE_REQUEST:
@@ -749,17 +753,32 @@ func _start_idle_animation() -> void:
         art_tween.tween_property(current_art, "scale", Vector2(1.025, 1.025), 2.8).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
         art_tween.tween_property(current_art, "scale", Vector2.ONE, 2.8).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
+func _available_upgrade_count() -> int:
+    var count: int = 0
+    for up in upgrades:
+        if total_shards >= float(up["unlock"]):
+            count += 1
+    return count
+
 func _rebuild_upgrade_buttons() -> void:
     for child in upgrades_box.get_children():
         child.queue_free()
+
+    visible_upgrade_count = _available_upgrade_count()
+    var next_unlock: float = -1.0
+
     for i in range(upgrades.size()):
         var up = upgrades[i]
+        var unlock_need: float = float(up["unlock"])
+        if total_shards < unlock_need:
+            if next_unlock < 0.0 or unlock_need < next_unlock:
+                next_unlock = unlock_need
+            continue
+
         var cost: float = _upgrade_cost(i)
         var btn := Button.new()
         btn.custom_minimum_size = Vector2(0, 82)
-        btn.text = "%s  Lv.%d
-%s
-Цена: %s" % [up["name"], up["count"], up["desc"], _compact(cost)]
+        btn.text = "%s  Lv.%d\n%s\nЦена: %s" % [up["name"], up["count"], up["desc"], _compact(cost)]
         btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
         btn.add_theme_font_size_override("font_size", 15)
         btn.add_theme_color_override("font_color", Color("d7e1ff"))
@@ -768,6 +787,14 @@ func _rebuild_upgrade_buttons() -> void:
         btn.add_theme_stylebox_override("pressed", _upgrade_style(true))
         btn.pressed.connect(_buy_upgrade.bind(i))
         upgrades_box.add_child(btn)
+
+    if next_unlock >= 0.0:
+        var locked_hint := Label.new()
+        locked_hint.text = "Следующая технология откроется при общем доходе %s." % _compact(next_unlock)
+        locked_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+        locked_hint.add_theme_color_override("font_color", Color("7584aa"))
+        locked_hint.add_theme_font_size_override("font_size", 14)
+        upgrades_box.add_child(locked_hint)
 
 func _buy_upgrade(index: int) -> void:
     var cost: float = _upgrade_cost(index)
