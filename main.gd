@@ -396,6 +396,12 @@ func _rebuild_gallery_cards() -> void:
         card.alignment = HORIZONTAL_ALIGNMENT_LEFT
         card.add_theme_font_size_override("font_size", 15)
         card.text = "%s\n%s" % [ch["reward"], ch["title"]]
+        var art_path: String = String(ch["art"])
+        if ResourceLoader.exists(art_path):
+            var texture = load(art_path)
+            if texture is Texture2D:
+                card.icon = texture
+                card.expand_icon = true
         card.pressed.connect(_show_gallery_entry.bind(i))
         gallery_grid.add_child(card)
 
@@ -484,6 +490,9 @@ func _show_reward_overlay(index: int) -> void:
     if index < 0 or index >= chapters.size():
         return
     var ch = chapters[index]
+    var is_final: bool = index == chapters.size() - 1
+    reward_title.text = "ТЫ ДОШЁЛ ДО СОВЕРШЕНСТВА" if is_final else "НОВОЕ ОТРАЖЕНИЕ"
+    reward_title.add_theme_color_override("font_color", Color("ffd978") if is_final else Color("f7dfff"))
     reward_name.text = String(ch["reward"])
     reward_art.texture = null
     var art_path: String = String(ch["art"])
@@ -499,12 +508,23 @@ func _show_reward_overlay(index: int) -> void:
 
     var tween := create_tween()
     tween.set_parallel(true)
-    tween.tween_property(reward_overlay, "color:a", 0.94, 0.28)
+    tween.tween_property(reward_overlay, "color:a", 0.97 if is_final else 0.94, 0.28)
     tween.tween_property(reward_card, "modulate:a", 1.0, 0.28)
-    tween.tween_property(reward_card, "scale", Vector2.ONE, 0.42).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+    tween.tween_property(reward_card, "scale", Vector2.ONE, 0.58 if is_final else 0.42).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
-    for i in range(52):
+    var spark_count: int = 110 if is_final else 52
+    for i in range(spark_count):
         _spawn_reveal_spark()
+
+    if is_final:
+        sfx_bank.play("crit")
+        var base_pos: Vector2 = position
+        var shake := create_tween()
+        shake.tween_property(self, "position", base_pos + Vector2(-12, 4), 0.05)
+        shake.tween_property(self, "position", base_pos + Vector2(11, -3), 0.05)
+        shake.tween_property(self, "position", base_pos + Vector2(-8, 2), 0.05)
+        shake.tween_property(self, "position", base_pos + Vector2(6, -1), 0.05)
+        shake.tween_property(self, "position", base_pos, 0.08)
 
 func _close_reward_overlay() -> void:
     if not is_instance_valid(reward_overlay) or not reward_overlay.visible:
