@@ -52,10 +52,15 @@ var event_label: Label
 var upgrades_box: VBoxContainer
 var offline_label: Label
 var chapter_symbol: Label
+var fx_layer: Control
+var bonus_clock: float = 18.0
+var rare_bonus_button: Button
+var last_click_fx_tier: int = 0
 
 func _ready() -> void:
     rng.randomize()
     _build_ui()
+    _build_fx_layer()
     _load_game()
     _recalculate_stats()
     _apply_offline_progress()
@@ -68,6 +73,11 @@ func _process(delta: float) -> void:
         shards += gain
         total_shards += gain
         _check_chapter_unlocks()
+    bonus_clock -= delta
+    if bonus_clock <= 0.0 and not is_instance_valid(rare_bonus_button):
+        _spawn_rare_bonus()
+        bonus_clock = rng.randf_range(22.0, 38.0)
+
     autosave_clock += delta
     if autosave_clock >= AUTOSAVE_INTERVAL:
         autosave_clock = 0.0
@@ -247,6 +257,13 @@ func _build_ui() -> void:
 
     _rebuild_upgrade_buttons()
 
+func _build_fx_layer() -> void:
+    fx_layer = Control.new()
+    fx_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    fx_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    fx_layer.z_index = 100
+    add_child(fx_layer)
+
 func _stat_label(text_value: String) -> Label:
     var label := Label.new()
     label.text = text_value
@@ -307,9 +324,72 @@ func _on_core_pressed() -> void:
     total_shards += amount
     event_label.text = ("КРИТИЧЕСКИЙ ИМПУЛЬС! +%s" if critical else "+%s осколков") % _compact(amount)
     _spawn_float_text(amount, critical)
+    _spawn_click_particles(critical)
     _animate_click(critical)
     _check_chapter_unlocks()
     _refresh_all()
+
+func _spawn_click_particles(critical: bool) -> void:
+    if not is_instance_valid(fx_layer):
+        return
+
+    var tier: int = mini(5, 1 + int(log(maxf(click_power, 1.0)) / log(10.0)))
+    last_click_fx_tier = tier
+    var particle_count: int = 6 + tier * 3 + (8 if critical else 0)
+    var center: Vector2 = core_button.global_position + core_button.size / 2.0
+
+    for i in range(particle_count):
+        var spark := ColorRect.new()
+        var size_px: float = rng.randf_range(3.0, 7.0 + float(tier))
+        spark.size = Vector2(size_px, size_px)
+        spark.position = center - spark.size / 2.0
+        spark.color = Color.from_hsv(rng.randf_range(0.53, 0.72), 0.55, 1.0, 0.92)
+        spark.rotation = rng.randf_range(-PI, PI)
+        spark.mouse_filter = Control.MOUSE_FILTER_IGNORE
+        fx_layer.add_child(spark)
+
+        var angle: float = rng.randf_range(0.0, TAU)
+        var distance: float = rng.randf_range(35.0, 75.0 + 16.0 * float(tier))
+        if critical:
+            distance *= 1.35
+        var target: Vector2 = spark.position + Vector2(cos(angle), sin(angle)) * distance
+        var duration: float = rng.randf_range(0.28, 0.55)
+        var tween := create_tween()
+        tween.set_parallel(true)
+        tween.tween_property(spark, "position", target, duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+        tween.tween_property(spark, "modulate:a", 0.0, duration)
+        tween.tween_property(spark, "rotation", spark.rotation + rng.randf_range(-2.0, 2.0), duration)
+        tween.finished.connect(spark.queue_free)
+
+    if tier >= 3 or critical:
+        _spawn_energy_ring(center, critical)
+
+func _spawn_energy_ring(center: Vector2, critical: bool) -> void:
+    var ring := Panel.new()
+    var diameter: float = 56.0 if not critical else 78.0
+    ring.size = Vector2(diameter, diameter)
+    ring.position = center - ring.size / 2.0
+    ring.pivot_offset = ring.size / 2.0
+    ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    var style := StyleBoxFlat.new()
+    style.bg_color = Color(0, 0, 0, 0)
+    style.border_width_left = 3 if critical else 2
+    style.border_width_top = 3 if critical else 2
+    style.border_width_right = 3 if critical else 2
+    style.border_width_bottom = 3 if critical else 2
+    style.border_color = Color(0.62, 0.82, 1.0, 0.9) if not critical else Color(1.0, 0.84, 0.38, 0.95)
+    style.corner_radius_top_left = int(diameter / 2.0)
+    style.corner_radius_top_right = int(diameter / 2.0)
+    style.corner_radius_bottom_left = int(diameter / 2.0)
+    style.corner_radius_bottom_right = int(diameter / 2.0)
+    ring.add_theme_stylebox_override("panel", style)
+    fx_layer.add_child(ring)
+
+    var tween := create_tween()
+    tween.set_parallel(true)
+    tween.tween_property(ring, "scale", Vector2(3.0, 3.0) if critical else Vector2(2.2, 2.2), 0.36)
+    tween.tween_property(ring, "modulate:a", 0.0, 0.36)
+    tween.finished.connect(ring.queue_free)
 
 func _spawn_float_text(amount: float, critical: bool) -> void:
     var pop := Label.new()
@@ -372,8 +452,30 @@ func _buy_upgrade(index: int) -> void:
     upgrades[index]["count"] = int(upgrades[index]["count"]) + 1
     _recalculate_stats()
     event_label.text = "%s улучшен до уровня %d." % [upgrades[index]["name"], upgrades[index]["count"]]
+    _spawn_level_up(upgrades[index]["name"])
     _refresh_all()
     _save_game()
+
+func _spawn_level_up(upgrade_name: String) -> void:
+    if not is_instance_valid(fx_layer):
+        return
+    var label := Label.new()
+    label.text = "LEVEL UP  •  %s" % upgrade_name
+    label.add_theme_font_size_override("font_size", 22)
+    label.add_theme_color_override("font_color", Color("fff2a6"))
+    label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+    label.add_theme_constant_override("shadow_offset_x", 2)
+    label.add_theme_constant_override("shadow_offset_y", 2)
+    label.position = Vector2(size.x * 0.58, size.y * 0.24)
+    label.modulate.a = 0.0
+    fx_layer.add_child(label)
+    var start_pos: Vector2 = label.position
+    var tween := create_tween()
+    tween.set_parallel(true)
+    tween.tween_property(label, "modulate:a", 1.0, 0.12)
+    tween.tween_property(label, "position", start_pos + Vector2(0, -24), 0.55).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+    tween.chain().tween_property(label, "modulate:a", 0.0, 0.28)
+    tween.finished.connect(label.queue_free)
 
 func _upgrade_cost(index: int) -> float:
     var up = upgrades[index]
@@ -402,13 +504,124 @@ func _chapter_reveal() -> void:
     var ch = chapters[current_chapter]
     event_label.text = "ОТКРЫТА НОВАЯ ГЛАВА: %s" % ch["title"]
     chapter_symbol.text = ch["symbol"]
+    _chapter_flash(ch["title"])
+
     var tween := create_tween()
     chapter_label.modulate.a = 0.0
     chapter_subtitle.modulate.a = 0.0
+    chapter_label.scale = Vector2(0.92, 0.92)
+    chapter_label.pivot_offset = chapter_label.size / 2.0
     tween.set_parallel(true)
     tween.tween_property(chapter_label, "modulate:a", 1.0, 0.7)
     tween.tween_property(chapter_subtitle, "modulate:a", 1.0, 1.0)
+    tween.tween_property(chapter_label, "scale", Vector2.ONE, 0.55).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
     _save_game()
+
+func _chapter_flash(title_text: String) -> void:
+    if not is_instance_valid(fx_layer):
+        return
+
+    var flash := ColorRect.new()
+    flash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    flash.color = Color(0.70, 0.83, 1.0, 0.0)
+    flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    fx_layer.add_child(flash)
+
+    var banner := Label.new()
+    banner.text = "НОВАЯ ИЛЛЮСТРАЦИЯ\n%s" % title_text
+    banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    banner.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+    banner.set_anchors_preset(Control.PRESET_CENTER)
+    banner.position = Vector2(-330, -70)
+    banner.size = Vector2(660, 140)
+    banner.add_theme_font_size_override("font_size", 28)
+    banner.add_theme_color_override("font_color", Color("f4f7ff"))
+    banner.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
+    banner.add_theme_constant_override("shadow_offset_x", 3)
+    banner.add_theme_constant_override("shadow_offset_y", 3)
+    banner.modulate.a = 0.0
+    banner.scale = Vector2(0.88, 0.88)
+    banner.pivot_offset = banner.size / 2.0
+    fx_layer.add_child(banner)
+
+    var flash_tween := create_tween()
+    flash_tween.tween_property(flash, "color:a", 0.52, 0.10)
+    flash_tween.tween_property(flash, "color:a", 0.0, 0.55)
+    flash_tween.finished.connect(flash.queue_free)
+
+    var banner_tween := create_tween()
+    banner_tween.set_parallel(true)
+    banner_tween.tween_property(banner, "modulate:a", 1.0, 0.22)
+    banner_tween.tween_property(banner, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+    banner_tween.chain().tween_interval(0.7)
+    banner_tween.chain().tween_property(banner, "modulate:a", 0.0, 0.35)
+    banner_tween.finished.connect(banner.queue_free)
+
+    for i in range(34):
+        _spawn_reveal_spark()
+
+func _spawn_reveal_spark() -> void:
+    if not is_instance_valid(fx_layer):
+        return
+    var spark := ColorRect.new()
+    var px: float = rng.randf_range(3.0, 8.0)
+    spark.size = Vector2(px, px)
+    spark.position = Vector2(rng.randf_range(0.0, maxf(size.x, 1.0)), rng.randf_range(0.0, maxf(size.y, 1.0)))
+    spark.color = Color.from_hsv(rng.randf_range(0.53, 0.70), 0.45, 1.0, 0.9)
+    fx_layer.add_child(spark)
+    var target: Vector2 = spark.position + Vector2(rng.randf_range(-70.0, 70.0), rng.randf_range(-120.0, -35.0))
+    var duration: float = rng.randf_range(0.6, 1.2)
+    var tween := create_tween()
+    tween.set_parallel(true)
+    tween.tween_property(spark, "position", target, duration)
+    tween.tween_property(spark, "modulate:a", 0.0, duration)
+    tween.finished.connect(spark.queue_free)
+
+func _spawn_rare_bonus() -> void:
+    if not is_instance_valid(fx_layer) or is_instance_valid(rare_bonus_button):
+        return
+
+    var bonus := Button.new()
+    rare_bonus_button = bonus
+    bonus.text = "✦"
+    bonus.size = Vector2(64, 64)
+    bonus.position = Vector2(-72, rng.randf_range(120.0, maxf(160.0, size.y - 160.0)))
+    bonus.add_theme_font_size_override("font_size", 34)
+    bonus.add_theme_color_override("font_color", Color("fff2a0"))
+    bonus.add_theme_stylebox_override("normal", _round_button_style(Color("493a13"), Color("ffd85e"), 32))
+    bonus.add_theme_stylebox_override("hover", _round_button_style(Color("675019"), Color("ffe889"), 32))
+    bonus.add_theme_stylebox_override("pressed", _round_button_style(Color("2e260f"), Color("ffffff"), 32))
+    bonus.mouse_filter = Control.MOUSE_FILTER_STOP
+    bonus.pressed.connect(_collect_rare_bonus.bind(bonus))
+    fx_layer.add_child(bonus)
+
+    event_label.text = "Редкий осколок появился! Успей поймать его."
+    var target_x: float = maxf(size.x + 20.0, 1300.0)
+    var tween := create_tween()
+    tween.tween_property(bonus, "position:x", target_x, 6.0).set_trans(Tween.TRANS_LINEAR)
+    tween.finished.connect(_expire_rare_bonus.bind(bonus))
+
+func _collect_rare_bonus(button: Button) -> void:
+    if not is_instance_valid(button):
+        return
+    var reward: float = maxf(click_power * 20.0, maxf(25.0, auto_rate * 8.0))
+    shards += reward
+    total_shards += reward
+    event_label.text = "РЕДКИЙ БОНУС! +%s осколков" % _compact(reward)
+    _spawn_float_text(reward, true)
+    _spawn_click_particles(true)
+    if rare_bonus_button == button:
+        rare_bonus_button = null
+    button.queue_free()
+    _check_chapter_unlocks()
+    _refresh_all()
+
+func _expire_rare_bonus(button: Button) -> void:
+    if not is_instance_valid(button):
+        return
+    if rare_bonus_button == button:
+        rare_bonus_button = null
+    button.queue_free()
 
 func _refresh_all() -> void:
     _refresh_topbar()
