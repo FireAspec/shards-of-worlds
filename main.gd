@@ -4,6 +4,7 @@ const SAVE_PATH := "user://shards_save.json"
 const AUTOSAVE_INTERVAL := 5.0
 const SfxBank = preload("res://sfx_bank.gd")
 const AmbientFx = preload("res://ambient_fx.gd")
+const MusicBank = preload("res://music_bank.gd")
 
 var shards: float = 0.0
 var total_shards: float = 0.0
@@ -81,6 +82,8 @@ func _ready() -> void:
     rng.randomize()
     sfx_bank = SfxBank.new()
     add_child(sfx_bank)
+    var music_bank := MusicBank.new()
+    add_child(music_bank)
     _build_ui()
     _build_fx_layer()
     _build_gallery_overlay()
