@@ -70,6 +70,11 @@ var gallery_overlay: ColorRect
 var gallery_grid: GridContainer
 var gallery_preview: TextureRect
 var gallery_preview_text: Label
+var reward_overlay: ColorRect
+var reward_card: PanelContainer
+var reward_art: TextureRect
+var reward_name: Label
+var reward_title: Label
 
 func _ready() -> void:
     rng.randomize()
@@ -78,6 +83,7 @@ func _ready() -> void:
     _build_ui()
     _build_fx_layer()
     _build_gallery_overlay()
+    _build_reward_overlay()
     _load_game()
     _recalculate_stats()
     _apply_offline_progress()
@@ -404,6 +410,103 @@ func _show_gallery_entry(index: int) -> void:
         gallery_preview_text.text = "%s\nИллюстрация готовится." % ch["reward"]
     sfx_bank.play("open")
 
+func _build_reward_overlay() -> void:
+    reward_overlay = ColorRect.new()
+    reward_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    reward_overlay.color = Color(0.015, 0.01, 0.04, 0.0)
+    reward_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+    reward_overlay.z_index = 300
+    reward_overlay.visible = false
+    add_child(reward_overlay)
+
+    var center := CenterContainer.new()
+    center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    reward_overlay.add_child(center)
+
+    reward_card = PanelContainer.new()
+    reward_card.custom_minimum_size = Vector2(520, 610)
+    reward_card.add_theme_stylebox_override("panel", _panel_style(Color("171226"), 26))
+    reward_card.pivot_offset = Vector2(260, 305)
+    center.add_child(reward_card)
+
+    var margin := MarginContainer.new()
+    margin.add_theme_constant_override("margin_left", 20)
+    margin.add_theme_constant_override("margin_right", 20)
+    margin.add_theme_constant_override("margin_top", 18)
+    margin.add_theme_constant_override("margin_bottom", 18)
+    reward_card.add_child(margin)
+
+    var box := VBoxContainer.new()
+    box.alignment = BoxContainer.ALIGNMENT_CENTER
+    box.add_theme_constant_override("separation", 12)
+    margin.add_child(box)
+
+    reward_title = Label.new()
+    reward_title.text = "НОВОЕ ОТРАЖЕНИЕ"
+    reward_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    reward_title.add_theme_font_size_override("font_size", 24)
+    reward_title.add_theme_color_override("font_color", Color("f7dfff"))
+    box.add_child(reward_title)
+
+    reward_art = TextureRect.new()
+    reward_art.custom_minimum_size = Vector2(450, 450)
+    reward_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+    reward_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+    box.add_child(reward_art)
+
+    reward_name = Label.new()
+    reward_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    reward_name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    reward_name.add_theme_font_size_override("font_size", 28)
+    reward_name.add_theme_color_override("font_color", Color("ffffff"))
+    box.add_child(reward_name)
+
+    var close := Button.new()
+    close.text = "В галерею"
+    close.custom_minimum_size = Vector2(0, 46)
+    close.pressed.connect(_close_reward_overlay)
+    box.add_child(close)
+
+func _show_reward_overlay(index: int) -> void:
+    if index < 0 or index >= chapters.size():
+        return
+    var ch = chapters[index]
+    reward_name.text = String(ch["reward"])
+    reward_art.texture = null
+    var art_path: String = String(ch["art"])
+    if ResourceLoader.exists(art_path):
+        var texture = load(art_path)
+        if texture is Texture2D:
+            reward_art.texture = texture
+
+    reward_overlay.visible = true
+    reward_overlay.color.a = 0.0
+    reward_card.modulate.a = 0.0
+    reward_card.scale = Vector2(0.72, 0.72)
+
+    var tween := create_tween()
+    tween.set_parallel(true)
+    tween.tween_property(reward_overlay, "color:a", 0.94, 0.28)
+    tween.tween_property(reward_card, "modulate:a", 1.0, 0.28)
+    tween.tween_property(reward_card, "scale", Vector2.ONE, 0.42).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+    for i in range(52):
+        _spawn_reveal_spark()
+
+func _close_reward_overlay() -> void:
+    if not is_instance_valid(reward_overlay) or not reward_overlay.visible:
+        return
+    var tween := create_tween()
+    tween.set_parallel(true)
+    tween.tween_property(reward_overlay, "color:a", 0.0, 0.20)
+    tween.tween_property(reward_card, "modulate:a", 0.0, 0.18)
+    tween.tween_property(reward_card, "scale", Vector2(0.90, 0.90), 0.20)
+    tween.finished.connect(_finish_close_reward)
+
+func _finish_close_reward() -> void:
+    reward_overlay.visible = false
+    _toggle_gallery()
+
 func _build_fx_layer() -> void:
     fx_layer = Control.new()
     fx_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -656,6 +759,7 @@ func _chapter_reveal() -> void:
     sfx_bank.play("unlock")
     _chapter_flash("%s  •  %s" % [ch["title"], ch["reward"]])
     _rebuild_gallery_cards()
+    _show_reward_overlay(current_chapter)
 
     var tween := create_tween()
     chapter_label.modulate.a = 0.0
@@ -793,6 +897,7 @@ func _refresh_chapter() -> void:
     chapter_subtitle.text = ch["subtitle"]
     chapter_symbol.text = ch["symbol"]
     core_button.text = ch["symbol"]
+    core_button.tooltip_text = "Текущее отражение: %s" % ch["reward"]
     var hue: float = float(current_chapter) / maxf(1.0, float(chapters.size() - 1))
     core_glow.color = Color.from_hsv(0.58 + hue * 0.18, 0.55, 1.0, 0.10)
 
