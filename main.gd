@@ -5,6 +5,7 @@ const AUTOSAVE_INTERVAL := 5.0
 const SfxBank = preload("res://sfx_bank.gd")
 const AmbientFx = preload("res://ambient_fx.gd")
 const MusicBank = preload("res://music_bank.gd")
+const GalleryArtLoader = preload("res://gallery_art_loader.gd")
 
 var shards: float = 0.0
 var total_shards: float = 0.0
@@ -418,11 +419,10 @@ func _rebuild_gallery_cards() -> void:
         card.add_theme_font_size_override("font_size", 15)
         card.text = "%s\n%s" % [ch["reward"], ch["title"]]
         var art_path: String = String(ch["art"])
-        if ResourceLoader.exists(art_path):
-            var texture = load(art_path)
-            if texture is Texture2D:
-                card.icon = texture
-                card.expand_icon = true
+        var texture: Texture2D = GalleryArtLoader.load_texture(art_path)
+        if texture != null:
+            card.icon = texture
+            card.expand_icon = true
         card.pressed.connect(_show_gallery_entry.bind(i))
         gallery_grid.add_child(card)
 
@@ -517,10 +517,9 @@ func _show_reward_overlay(index: int) -> void:
     reward_name.text = String(ch["reward"])
     reward_art.texture = null
     var art_path: String = String(ch["art"])
-    if ResourceLoader.exists(art_path):
-        var texture = load(art_path)
-        if texture is Texture2D:
-            reward_art.texture = texture
+    var texture: Texture2D = GalleryArtLoader.load_texture(art_path)
+    if texture != null:
+        reward_art.texture = texture
 
     reward_overlay.visible = true
     reward_overlay.color.a = 0.0
@@ -970,10 +969,9 @@ func _refresh_chapter() -> void:
     if is_instance_valid(current_art):
         current_art.texture = null
         var art_path: String = String(ch["art"])
-        if ResourceLoader.exists(art_path):
-            var texture = load(art_path)
-            if texture is Texture2D:
-                current_art.texture = texture
+        var texture: Texture2D = GalleryArtLoader.load_texture(art_path)
+        if texture != null:
+            current_art.texture = texture
 
     var hue: float = float(current_chapter) / maxf(1.0, float(chapters.size() - 1))
     core_glow.color = Color.from_hsv(0.58 + hue * 0.18, 0.55, 1.0, 0.10)
