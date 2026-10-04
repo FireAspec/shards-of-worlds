@@ -362,7 +362,7 @@ func _build_gallery_overlay() -> void:
     preview_box.add_child(gallery_preview)
 
     gallery_preview_text = Label.new()
-    gallery_preview_text.text = "Выбери открытое отражение."
+    gallery_preview_text.text = "Здесь появляются только уже восстановленные отражения."
     gallery_preview_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     gallery_preview_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     gallery_preview_text.add_theme_font_size_override("font_size", 18)
@@ -383,20 +383,29 @@ func _rebuild_gallery_cards() -> void:
     for child in gallery_grid.get_children():
         child.queue_free()
 
+    var unlocked_count: int = 0
     for i in range(chapters.size()):
         var ch = chapters[i]
         var unlocked: bool = total_shards >= float(ch["need"])
+        if not unlocked:
+            continue
+
+        unlocked_count += 1
         var card := Button.new()
         card.custom_minimum_size = Vector2(245, 104)
         card.alignment = HORIZONTAL_ALIGNMENT_LEFT
         card.add_theme_font_size_override("font_size", 15)
-        if unlocked:
-            card.text = "%02d  %s\n%s" % [i + 1, ch["reward"], ch["title"]]
-            card.pressed.connect(_show_gallery_entry.bind(i))
-        else:
-            card.text = "%02d  ???\nНужно: %s" % [i + 1, _compact(float(ch["need"]))]
-            card.disabled = true
+        card.text = "%s\n%s" % [ch["reward"], ch["title"]]
+        card.pressed.connect(_show_gallery_entry.bind(i))
         gallery_grid.add_child(card)
+
+    if unlocked_count == 0:
+        var empty := Label.new()
+        empty.text = "Архив пока пуст. Первое отражение ещё не восстановлено."
+        empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+        empty.add_theme_font_size_override("font_size", 18)
+        empty.add_theme_color_override("font_color", Color("8795ba"))
+        gallery_grid.add_child(empty)
 
 func _show_gallery_entry(index: int) -> void:
     var ch = chapters[index]
