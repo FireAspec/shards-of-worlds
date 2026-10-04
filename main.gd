@@ -109,7 +109,7 @@ func _process(delta: float) -> void:
             event_label.text = "Резонанс угас. Система вернулась в обычный режим."
 
     if auto_rate > 0.0:
-        var gain: float = auto_rate * boost_multiplier * delta
+        var gain: float = auto_rate * _effective_multiplier() * delta
         shards += gain
         total_shards += gain
         _check_chapter_unlocks()
@@ -639,7 +639,7 @@ func _upgrade_style(can_buy: bool) -> StyleBoxFlat:
     return style
 
 func _on_core_pressed() -> void:
-    var amount: float = click_power * boost_multiplier
+    var amount: float = click_power * _effective_multiplier()
     var critical: bool = rng.randf() < crit_chance
     if critical:
         amount *= crit_multiplier
@@ -997,15 +997,22 @@ func _refresh_all() -> void:
     _refresh_chapter_progress()
     _rebuild_upgrade_buttons()
 
+func _collection_multiplier() -> float:
+    return 1.0 + float(current_chapter) * 0.08
+
+func _effective_multiplier() -> float:
+    return _collection_multiplier() * boost_multiplier
+
 func _refresh_topbar() -> void:
     shard_label.text = "Осколки: %s" % _compact(shards)
     total_label.text = "Всего: %s" % _compact(total_shards)
-    click_label.text = "Клик: +%s" % _compact(click_power * boost_multiplier)
-    auto_label.text = "/сек: %s" % _compact(auto_rate * boost_multiplier)
+    click_label.text = "Клик: +%s" % _compact(click_power * _effective_multiplier())
+    auto_label.text = "/сек: %s" % _compact(auto_rate * _effective_multiplier())
+    var collection_text: String = "Коллекция ×%.2f" % _collection_multiplier()
     if boost_time_left > 0.0:
-        boost_label.text = "✦ РЕЗОНАНС ×2  •  %.1f сек." % boost_time_left
+        boost_label.text = "%s  •  ✦ РЕЗОНАНС ×2  •  %.1f сек." % [collection_text, boost_time_left]
     else:
-        boost_label.text = ""
+        boost_label.text = collection_text
 
 func _refresh_chapter() -> void:
     var ch = chapters[current_chapter]
