@@ -7,7 +7,7 @@ func _ready() -> void:
     rng.randomize()
     mouse_filter = Control.MOUSE_FILTER_IGNORE
     set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    z_index = 2
+    z_index = 0
     for i in range(shard_count):
         _spawn_shard(i)
 
