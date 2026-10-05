@@ -87,6 +87,7 @@ var reward_story: Label
 var boost_label: Label
 var current_art: TextureRect
 var current_art_frame: Panel
+var background_art: TextureRect
 var yandex_sdk
 var leaderboard_button: Button
 var rewarded_button: Button
@@ -185,8 +186,22 @@ func _notification(what: int) -> void:
 func _build_ui() -> void:
     var bg := ColorRect.new()
     bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    bg.color = Color("090b18")
+    bg.color = Color("070914")
     add_child(bg)
+
+    background_art = TextureRect.new()
+    background_art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    background_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+    background_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+    background_art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    background_art.modulate = Color(0.34, 0.37, 0.52, 0.28)
+    add_child(background_art)
+
+    var background_dim := ColorRect.new()
+    background_dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    background_dim.color = Color(0.015, 0.02, 0.065, 0.76)
+    background_dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    add_child(background_dim)
 
     var ambient := AmbientFx.new()
     add_child(ambient)
@@ -977,6 +992,12 @@ func _start_idle_animation() -> void:
         art_tween.tween_property(current_art, "scale", Vector2(1.025, 1.025), 2.8).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
         art_tween.tween_property(current_art, "scale", Vector2.ONE, 2.8).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
+    if is_instance_valid(background_art):
+        background_art.pivot_offset = size / 2.0
+        var bg_tween := create_tween().set_loops()
+        bg_tween.tween_property(background_art, "scale", Vector2(1.035, 1.035), 7.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+        bg_tween.tween_property(background_art, "scale", Vector2.ONE, 7.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
 func _available_upgrade_count() -> int:
     var count: int = 0
     for up in upgrades:
@@ -1252,6 +1273,11 @@ func _refresh_chapter() -> void:
         var texture: Texture2D = GalleryArtLoader.load_texture(art_path)
         if texture != null:
             current_art.texture = texture
+            if is_instance_valid(background_art):
+                background_art.texture = texture
+                background_art.modulate.a = 0.0
+                var background_reveal := create_tween()
+                background_reveal.tween_property(background_art, "modulate:a", 0.28, 0.8)
 
     var hue: float = float(current_chapter) / maxf(1.0, float(chapters.size() - 1))
     core_glow.color = Color.from_hsv(0.58 + hue * 0.18, 0.55, 1.0, 0.10)
