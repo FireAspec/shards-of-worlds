@@ -998,3 +998,527 @@ func _spawn_click_particles(critical: bool) -> void:
         fx_layer.add_child(spark)
         var angle: float = rng.randf_range(0.0, TAU)
         var dist: float = rng.randf_range(80.0, 210.0 if critical else 145.0)
+
+# -----------------------------------------------------------------------------
+# Runtime helpers and gameplay systems
+# -----------------------------------------------------------------------------
+
+func _active_bonus_kind() -> String:
+    return String(chapters[clampi(active_character, 0, chapters.size() - 1)]["bonus_kind"])
+
+func _active_bonus_value() -> float:
+    return float(chapters[clampi(active_character, 0, chapters.size() - 1)]["bonus_value"])
+
+func _all_income_multiplier() -> float:
+    var kind: String = _active_bonus_kind()
+    if kind == "all_income":
+        return 1.0 + _active_bonus_value()
+    if kind == "perfection":
+        return 2.0
+    return 1.0
+
+func _auto_income_multiplier() -> float:
+    var kind: String = _active_bonus_kind()
+    if kind == "auto_income" or kind == "auto_efficiency":
+        return 1.0 + _active_bonus_value()
+    return 1.0
+
+func _display_auto_multiplier() -> float:
+    return _auto_income_multiplier()
+
+func _click_multiplier() -> float:
+    var kind: String = _active_bonus_kind()
+    if kind == "click_power":
+        return 1.0 + _active_bonus_value()
+    if kind == "perfection":
+        return 2.0
+    return 1.0
+
+func _crit_multiplier_bonus() -> float:
+    if _active_bonus_kind() == "crit_power":
+        return 1.0 + _active_bonus_value()
+    return 1.0
+
+func _upgrade_cost_multiplier() -> float:
+    if _active_bonus_kind() == "upgrade_discount":
+        return maxf(0.05, 1.0 - _active_bonus_value())
+    return 1.0
+
+func _offline_income_multiplier() -> float:
+    var kind: String = _active_bonus_kind()
+    if kind == "offline_income":
+        return 1.0 + _active_bonus_value()
+    if kind == "perfection":
+        return 2.0
+    return 1.0
+
+func _task_reward_multiplier() -> float:
+    if _active_bonus_kind() == "task_reward":
+        return 1.0 + _active_bonus_value()
+    return 1.0
+
+func _resonance_duration_multiplier() -> float:
+    if _active_bonus_kind() == "resonance_duration":
+        return 1.0 + _active_bonus_value()
+    return 1.0
+
+func _next_bonus_delay() -> float:
+    var delay: float = rng.randf_range(BONUS_MIN_TIME, BONUS_MAX_TIME)
+    if _active_bonus_kind() == "resonance_frequency":
+        delay /= 1.0 + _active_bonus_value()
+    return delay
+
+func _recalculate_stats() -> void:
+    click_power = 1.0
+    auto_rate = 0.0
+    for up in upgrades:
+        var contribution: float = float(up["value"]) * float(int(up["count"]))
+        if String(up["kind"]) == "click":
+            click_power += contribution
+        elif String(up["kind"]) == "auto":
+            auto_rate += contribution
+
+func _upgrade_cost(index: int) -> float:
+    if index < 0 or index >= upgrades.size():
+        return INF
+    var up: Dictionary = upgrades[index]
+    return float(up["base"]) * pow(float(up["growth"]), int(up["count"])) * _upgrade_cost_multiplier()
+
+func _buy_upgrade(index: int) -> void:
+    if index < 0 or index >= upgrades.size():
+        return
+    var cost: float = _upgrade_cost(index)
+    if shards < cost:
+        _spawn_status_text("НЕ ХВАТАЕТ ОСКОЛКОВ • нужно %s" % _compact(cost), Color("ff9eb9"))
+        return
+    shards -= cost
+    upgrades[index]["count"] = int(upgrades[index]["count"]) + 1
+    _recalculate_stats()
+    sfx_bank.play("buy")
+    _spawn_status_text("%s • уровень %d" % [String(upgrades[index]["name"]), int(upgrades[index]["count"])], Color("dcb8ff"))
+    _rebuild_automation()
+    _refresh_live_labels()
+    _save_game()
+
+func _check_chapter_unlock() -> void:
+    var unlocked: int = current_chapter
+    for i in range(chapters.size()):
+        if total_shards >= float(chapters[i]["need"]):
+            unlocked = i
+    if unlocked <= current_chapter:
+        return
+
+    var old_chapter: int = current_chapter
+    var task_reward: float = 0.0
+    for i in range(old_chapter + 1, unlocked + 1):
+        task_reward += maxf(50.0, float(chapters[i]["need"]) * 0.05) * _task_reward_multiplier()
+
+    current_chapter = unlocked
+    active_character = unlocked
+    shards += task_reward
+
+    sfx_bank.play("unlock")
+    _refresh_character()
+    _rebuild_collection()
+    _rebuild_automation()
+    _refresh_live_labels()
+    _show_reward(unlocked)
+    _spawn_status_text("НОВЫЙ ПЕРСОНАЖ • %s" % String(chapters[unlocked]["name"]), Color("ffe39a"))
+    _save_game()
+
+func _debug_unlock_next() -> void:
+    if current_chapter >= chapters.size() - 1:
+        _spawn_status_text("Все 13 персонажей уже открыты.", Color("ffe39a"))
+        return
+    var need: float = float(chapters[current_chapter + 1]["need"])
+    var delta: float = maxf(0.0, need - total_shards)
+    total_shards += delta
+    shards += delta
+    _check_chapter_unlock()
+
+func _show_reward(index: int) -> void:
+    if index < 0 or index >= chapters.size() or not is_instance_valid(reward_overlay):
+        return
+    var chapter: Dictionary = chapters[index]
+    var is_final: bool = index == chapters.size() - 1
+    reward_title.text = "ТЫ ДОСТИГ СОВЕРШЕНСТВА" if is_final else "НОВЫЙ ПЕРСОНАЖ"
+    reward_title.add_theme_color_override("font_color", Color("ffd978") if is_final else Color("fff5ff"))
+    reward_name.text = String(chapter["name"])
+    reward_story.text = String(chapter["story"])
+    reward_art.texture = load(String(chapter["art"]))
+
+    reward_overlay.visible = true
+    reward_overlay.color.a = 0.0
+    reward_card.modulate.a = 0.0
+    reward_card.scale = Vector2(0.84, 0.84)
+
+    var tween: Tween = create_tween()
+    tween.set_parallel(true)
+    tween.tween_property(reward_overlay, "color:a", 0.95, 0.25)
+    tween.tween_property(reward_card, "modulate:a", 1.0, 0.28)
+    tween.tween_property(reward_card, "scale", Vector2.ONE, 0.42 if not is_final else 0.62).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+    if is_final:
+        sfx_bank.play("crit")
+        _spawn_status_text("ТЫ ДОСТИГ СОВЕРШЕНСТВА", Color("ffd978"))
+
+func _close_reward() -> void:
+    if not is_instance_valid(reward_overlay) or not reward_overlay.visible:
+        return
+    var tween: Tween = create_tween()
+    tween.set_parallel(true)
+    tween.tween_property(reward_overlay, "color:a", 0.0, 0.18)
+    tween.tween_property(reward_card, "modulate:a", 0.0, 0.18)
+    tween.tween_property(reward_card, "scale", Vector2(0.94, 0.94), 0.18)
+    tween.finished.connect(func() -> void:
+        reward_overlay.visible = false
+        reward_card.scale = Vector2.ONE
+    )
+
+func _spawn_rare_bonus() -> void:
+    if not is_instance_valid(fx_layer) or is_instance_valid(rare_bonus_button):
+        return
+
+    var bonus: Button = Button.new()
+    rare_bonus_button = bonus
+    bonus.text = "✦"
+    bonus.size = Vector2(76, 76)
+    bonus.position = Vector2(310, rng.randf_range(190.0, 760.0))
+    bonus.focus_mode = Control.FOCUS_NONE
+    bonus.mouse_filter = Control.MOUSE_FILTER_STOP
+    bonus.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+    bonus.add_theme_font_override("font", title_font)
+    bonus.add_theme_font_size_override("font_size", 42)
+    bonus.add_theme_color_override("font_color", Color("fff0a8"))
+    bonus.add_theme_stylebox_override("normal", _button_style(Color(0.20,0.08,0.31,0.96), Color("ffc85f"), 38))
+    bonus.add_theme_stylebox_override("hover", _button_style(Color(0.39,0.10,0.50,0.99), Color("fff0a8"), 38))
+    bonus.pressed.connect(_collect_rare_bonus.bind(bonus))
+    fx_layer.add_child(bonus)
+
+    var target: Vector2 = Vector2(1480, rng.randf_range(220.0, 770.0))
+    var tween: Tween = create_tween()
+    tween.tween_property(bonus, "position", target, 7.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+    tween.finished.connect(_expire_rare_bonus.bind(bonus))
+
+func _collect_rare_bonus(button: Button) -> void:
+    if not is_instance_valid(button):
+        return
+    var reward: float = maxf(25.0, maxf(click_power * 25.0, auto_rate * 10.0)) * _all_income_multiplier()
+    var duration: float = 15.0 * _resonance_duration_multiplier()
+    shards += reward
+    total_shards += reward
+    caught_bonuses += 1
+    boost_multiplier = 2.0
+    boost_time_left = maxf(boost_time_left, duration)
+    sfx_bank.play("bonus")
+    _spawn_status_text("РЕЗОНАНС ×2 • %.0f сек • +%s" % [duration, _compact(reward)], Color("ffd7ff"))
+    if rare_bonus_button == button:
+        rare_bonus_button = null
+    button.queue_free()
+    _check_chapter_unlock()
+    _refresh_live_labels()
+    _save_game()
+
+func _expire_rare_bonus(button: Button) -> void:
+    if not is_instance_valid(button):
+        return
+    if rare_bonus_button == button:
+        rare_bonus_button = null
+    button.queue_free()
+
+func _spawn_status_text(message: String, color: Color) -> void:
+    if not is_instance_valid(fx_layer):
+        return
+    var label: Label = Label.new()
+    label.text = message
+    label.position = Vector2(560, 175)
+    label.size = Vector2(900, 58)
+    label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    label.add_theme_font_override("font", title_font)
+    label.add_theme_font_size_override("font_size", 24)
+    label.add_theme_color_override("font_color", color)
+    label.add_theme_color_override("font_shadow_color", Color(0,0,0,0.95))
+    label.add_theme_constant_override("shadow_offset_x", 2)
+    label.add_theme_constant_override("shadow_offset_y", 2)
+    label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    fx_layer.add_child(label)
+
+    var start: Vector2 = label.position
+    var tween: Tween = create_tween()
+    tween.set_parallel(true)
+    tween.tween_property(label, "position", start + Vector2(0, -70), 1.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+    tween.tween_property(label, "modulate:a", 0.0, 1.15)
+    tween.finished.connect(label.queue_free)
+
+func _focus_click_area() -> void:
+    _spawn_status_text("КЛИКНИ ПО КРИСТАЛЛУ", Color("e8c8ff"))
+    var tween_a: Tween = create_tween()
+    tween_a.tween_property(crystal_ring_a, "scale", Vector2(1.12,1.12), 0.14)
+    tween_a.tween_property(crystal_ring_a, "scale", Vector2.ONE, 0.32).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+func _start_ambient_animation() -> void:
+    if is_instance_valid(crystal_ring_a):
+        var tween_a: Tween = create_tween().set_loops()
+        tween_a.tween_property(crystal_ring_a, "rotation", TAU, 18.0).from(0.0).set_trans(Tween.TRANS_LINEAR)
+    if is_instance_valid(crystal_ring_b):
+        var tween_b: Tween = create_tween().set_loops()
+        tween_b.tween_property(crystal_ring_b, "rotation", -TAU, 13.0).from(0.0).set_trans(Tween.TRANS_LINEAR)
+
+func _clear_overlay_content() -> void:
+    if not is_instance_valid(overlay_content):
+        return
+    for child in overlay_content.get_children():
+        child.queue_free()
+
+func _close_overlay() -> void:
+    if is_instance_valid(overlay_root):
+        overlay_root.visible = false
+
+func _show_home() -> void:
+    _close_overlay()
+
+func _open_gallery() -> void:
+    _clear_overlay_content()
+    overlay_title.text = "Галерея отражений"
+    var info: Label = _small_text("Выбери любого уже открытого персонажа. Будущие награды скрыты до момента открытия.")
+    overlay_content.add_child(info)
+
+    var grid: GridContainer = GridContainer.new()
+    grid.columns = 5
+    grid.add_theme_constant_override("h_separation", 18)
+    grid.add_theme_constant_override("v_separation", 18)
+    overlay_content.add_child(grid)
+
+    for i in range(current_chapter + 1):
+        grid.add_child(_make_collection_card(i))
+
+    overlay_root.visible = true
+
+func _open_current_story() -> void:
+    _clear_overlay_content()
+    var chapter: Dictionary = chapters[active_character]
+    overlay_title.text = String(chapter["name"])
+    overlay_content.add_child(_small_text(String(chapter["story"])))
+    overlay_content.add_child(_small_text("Особенность: %s" % String(chapter["bonus_text"])))
+    overlay_content.add_child(_small_text(String(chapter["quote"])))
+    overlay_root.visible = true
+
+func _open_tasks() -> void:
+    _clear_overlay_content()
+    overlay_title.text = "Задания"
+    if current_chapter >= chapters.size() - 1:
+        overlay_content.add_child(_small_text("Главная цель выполнена: все 13 отражений восстановлены."))
+    else:
+        var need: float = float(chapters[current_chapter + 1]["need"])
+        var remaining: float = maxf(0.0, need - total_shards)
+        var reward: float = maxf(50.0, need * 0.05) * _task_reward_multiplier()
+        overlay_content.add_child(_small_text("Текущая цель: собрать %s осколков." % _compact(need)))
+        overlay_content.add_child(_small_text("Осталось: %s." % _compact(remaining)))
+        overlay_content.add_child(_small_text("Награда за этап: примерно %s осколков." % _compact(reward)))
+    overlay_root.visible = true
+
+func _open_achievements() -> void:
+    _clear_overlay_content()
+    overlay_title.text = "Достижения"
+    var achievements: Array = [
+        ["Первое отражение", current_chapter >= 0],
+        ["Коллекционер I — 5 персонажей", current_chapter >= 4],
+        ["Коллекционер II — 10 персонажей", current_chapter >= 9],
+        ["Охотник за резонансом — 10 бонусов", caught_bonuses >= 10],
+        ["Тысяча импульсов — 1000 кликов", total_clicks >= 1000],
+        ["Совершенство — 13/13", current_chapter >= 12]
+    ]
+    for item in achievements:
+        var mark: String = "✓" if bool(item[1]) else "◇"
+        overlay_content.add_child(_small_text("%s  %s" % [mark, String(item[0])]))
+    overlay_root.visible = true
+
+func _open_stats() -> void:
+    _clear_overlay_content()
+    overlay_title.text = "Статистика"
+    overlay_content.add_child(_small_text("Всего собрано: %s осколков" % _compact(total_shards)))
+    overlay_content.add_child(_small_text("Осколков сейчас: %s" % _compact(shards)))
+    overlay_content.add_child(_small_text("Кликов: %d" % total_clicks))
+    overlay_content.add_child(_small_text("Критических кликов: %d" % critical_clicks))
+    overlay_content.add_child(_small_text("Поймано резонансов: %d" % caught_bonuses))
+    overlay_content.add_child(_small_text("Открыто персонажей: %d / 13" % (current_chapter + 1)))
+    overlay_content.add_child(_small_text("Время текущей сессии: %d мин." % int(session_time / 60.0)))
+    overlay_root.visible = true
+
+func _open_settings() -> void:
+    _clear_overlay_content()
+    overlay_title.text = "Настройки"
+    var sound_toggle: CheckButton = CheckButton.new()
+    sound_toggle.text = "Звук"
+    sound_toggle.button_pressed = not AudioServer.is_bus_mute(AudioServer.get_bus_index("Master"))
+    sound_toggle.add_theme_font_override("font", ui_font)
+    sound_toggle.add_theme_font_size_override("font_size", 24)
+    sound_toggle.toggled.connect(_set_sound_enabled)
+    overlay_content.add_child(sound_toggle)
+    overlay_content.add_child(_small_text("Прогресс сохраняется автоматически каждые 5 секунд."))
+    overlay_content.add_child(_small_text("Выбранный персонаж сохраняется отдельно от прогресса открытия."))
+    overlay_root.visible = true
+
+func _set_sound_enabled(enabled: bool) -> void:
+    var index: int = AudioServer.get_bus_index("Master")
+    if index >= 0:
+        AudioServer.set_bus_mute(index, not enabled)
+
+func _small_text(value: String) -> Label:
+    var label: Label = Label.new()
+    label.text = value
+    label.custom_minimum_size = Vector2(0, 52)
+    label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    label.add_theme_font_override("font", ui_font)
+    label.add_theme_font_size_override("font_size", 22)
+    label.add_theme_color_override("font_color", Color("eee8ff"))
+    return label
+
+func _glass_style(bg_color: Color, border_color: Color, radius: int, shadow_size_value: int) -> StyleBoxFlat:
+    var style: StyleBoxFlat = StyleBoxFlat.new()
+    style.bg_color = bg_color
+    style.border_color = border_color
+    style.set_border_width_all(2)
+    style.corner_radius_top_left = radius
+    style.corner_radius_top_right = radius
+    style.corner_radius_bottom_left = radius
+    style.corner_radius_bottom_right = radius
+    style.shadow_color = Color(0.30, 0.08, 0.50, 0.38)
+    style.shadow_size = shadow_size_value
+    return style
+
+func _button_style(bg_color: Color, border_color: Color, radius: int) -> StyleBoxFlat:
+    var style: StyleBoxFlat = StyleBoxFlat.new()
+    style.bg_color = bg_color
+    style.border_color = border_color
+    style.set_border_width_all(2)
+    style.corner_radius_top_left = radius
+    style.corner_radius_top_right = radius
+    style.corner_radius_bottom_left = radius
+    style.corner_radius_bottom_right = radius
+    style.shadow_color = Color(0.45,0.10,0.62,0.25)
+    style.shadow_size = 8
+    return style
+
+func _ring_style(border_color: Color, width: int) -> StyleBoxFlat:
+    var style: StyleBoxFlat = StyleBoxFlat.new()
+    style.bg_color = Color(0.08,0.02,0.16,0.08)
+    style.border_color = border_color
+    style.set_border_width_all(width)
+    style.corner_radius_top_left = 200
+    style.corner_radius_top_right = 200
+    style.corner_radius_bottom_left = 200
+    style.corner_radius_bottom_right = 200
+    return style
+
+func _click_style() -> StyleBoxFlat:
+    var style: StyleBoxFlat = _glass_style(Color(0.16,0.035,0.30,0.96), Color("d36cff"), 28, 18)
+    style.border_width_left = 3
+    style.border_width_top = 3
+    style.border_width_right = 3
+    style.border_width_bottom = 3
+    return style
+
+func _progress_bg_style() -> StyleBoxFlat:
+    var style: StyleBoxFlat = StyleBoxFlat.new()
+    style.bg_color = Color(0.015,0.025,0.06,0.96)
+    style.border_color = Color(0.32,0.28,0.55,0.80)
+    style.set_border_width_all(1)
+    style.corner_radius_top_left = 10
+    style.corner_radius_top_right = 10
+    style.corner_radius_bottom_left = 10
+    style.corner_radius_bottom_right = 10
+    return style
+
+func _progress_fill_style() -> StyleBoxFlat:
+    var style: StyleBoxFlat = StyleBoxFlat.new()
+    style.bg_color = Color("c85cff")
+    style.corner_radius_top_left = 10
+    style.corner_radius_top_right = 10
+    style.corner_radius_bottom_left = 10
+    style.corner_radius_bottom_right = 10
+    style.shadow_color = Color(0.75,0.27,1.0,0.55)
+    style.shadow_size = 8
+    return style
+
+func _resonance_style(active: bool) -> StyleBoxFlat:
+    if active:
+        return _glass_style(Color(0.22,0.055,0.16,0.97), Color("ffb36b"), 18, 14)
+    return _glass_style(Color(0.045,0.035,0.10,0.94), Color(0.48,0.31,0.72,0.70), 18, 10)
+
+func _compact(value: float) -> String:
+    var suffixes: Array[String] = ["", "K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No"]
+    var idx: int = 0
+    var n: float = value
+    while absf(n) >= 1000.0 and idx < suffixes.size() - 1:
+        n /= 1000.0
+        idx += 1
+    if idx == 0:
+        return str(int(round(value)))
+    if absf(n) >= 100.0:
+        return "%.0f%s" % [n, suffixes[idx]]
+    if absf(n) >= 10.0:
+        return "%.1f%s" % [n, suffixes[idx]]
+    return "%.2f%s" % [n, suffixes[idx]]
+
+func _save_game() -> void:
+    var counts: Array[int] = []
+    for up in upgrades:
+        counts.append(int(up["count"]))
+    last_unix = int(Time.get_unix_time_from_system())
+    var data: Dictionary = {
+        "shards": shards,
+        "total_shards": total_shards,
+        "current_chapter": current_chapter,
+        "active_character": active_character,
+        "upgrade_counts": counts,
+        "last_unix": last_unix,
+        "total_clicks": total_clicks,
+        "critical_clicks": critical_clicks,
+        "caught_bonuses": caught_bonuses
+    }
+    var file: FileAccess = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+    if file != null:
+        file.store_string(JSON.stringify(data))
+        file.flush()
+
+func _load_game() -> void:
+    last_unix = int(Time.get_unix_time_from_system())
+    if not FileAccess.file_exists(SAVE_PATH):
+        return
+    var file: FileAccess = FileAccess.open(SAVE_PATH, FileAccess.READ)
+    if file == null:
+        return
+    var parsed: Variant = JSON.parse_string(file.get_as_text())
+    if typeof(parsed) != TYPE_DICTIONARY:
+        return
+    var data: Dictionary = parsed
+    shards = float(data.get("shards", 0.0))
+    total_shards = float(data.get("total_shards", 0.0))
+    current_chapter = clampi(int(data.get("current_chapter", 0)), 0, chapters.size() - 1)
+    active_character = clampi(int(data.get("active_character", current_chapter)), 0, current_chapter)
+    last_unix = int(data.get("last_unix", last_unix))
+    total_clicks = int(data.get("total_clicks", 0))
+    critical_clicks = int(data.get("critical_clicks", 0))
+    caught_bonuses = int(data.get("caught_bonuses", 0))
+
+    var counts: Variant = data.get("upgrade_counts", [])
+    if counts is Array:
+        var count_array: Array = counts
+        for i in range(mini(count_array.size(), upgrades.size())):
+            upgrades[i]["count"] = int(count_array[i])
+
+func _apply_offline_progress() -> void:
+    var now: int = int(Time.get_unix_time_from_system())
+    if last_unix <= 0 or auto_rate <= 0.0:
+        last_unix = now
+        return
+    var seconds: int = clampi(now - last_unix, 0, 8 * 60 * 60)
+    last_unix = now
+    if seconds <= 0:
+        return
+    var gain: float = auto_rate * float(seconds) * _auto_income_multiplier() * _all_income_multiplier() * _offline_income_multiplier()
+    shards += gain
+    total_shards += gain
+    offline_label.text = "Пока тебя не было: +%s за %d мин." % [_compact(gain), int(seconds / 60)]
+    _check_chapter_unlock()
