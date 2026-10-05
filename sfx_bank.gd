@@ -7,37 +7,37 @@ var cursor: int = 0
 var sounds: Dictionary = {}
 
 func _ready() -> void:
-    for i in range(6):
-        var player := AudioStreamPlayer.new()
+    for i in range(8):
+        var player: AudioStreamPlayer = AudioStreamPlayer.new()
         player.bus = "Master"
         add_child(player)
         players.append(player)
 
     sounds = {
-        "click": _make_tone(520.0, 0.055, 0.16, 0.25),
-        "crit": _make_tone(920.0, 0.12, 0.22, 0.55),
-        "buy": _make_tone(660.0, 0.10, 0.18, 0.35),
-        "bonus": _make_tone(1180.0, 0.16, 0.20, 0.50),
-        "unlock": _make_tone(760.0, 0.34, 0.17, 0.70),
-        "open": _make_tone(430.0, 0.09, 0.12, 0.20)
+        "click": _make_tone(520.0, 0.055, 0.13, 0.20),
+        "crit": _make_tone(980.0, 0.13, 0.20, 0.50),
+        "buy": _make_tone(660.0, 0.10, 0.14, 0.32),
+        "bonus": _make_tone(1180.0, 0.17, 0.18, 0.52),
+        "unlock": _make_tone(760.0, 0.34, 0.16, 0.68),
+        "open": _make_tone(430.0, 0.09, 0.10, 0.18)
     }
 
 func play(kind: String) -> void:
     if players.is_empty() or not sounds.has(kind):
         return
-    var player := players[cursor]
+    var player: AudioStreamPlayer = players[cursor]
     cursor = (cursor + 1) % players.size()
     player.stream = sounds[kind]
     player.play()
 
 func _make_tone(freq: float, duration: float, volume: float, harmonic: float) -> AudioStreamWAV:
-    var wav := AudioStreamWAV.new()
+    var wav: AudioStreamWAV = AudioStreamWAV.new()
     wav.format = AudioStreamWAV.FORMAT_16_BITS
     wav.mix_rate = MIX_RATE
     wav.stereo = false
 
     var sample_count: int = maxi(1, int(duration * float(MIX_RATE)))
-    var data := PackedByteArray()
+    var data: PackedByteArray = PackedByteArray()
     data.resize(sample_count * 2)
 
     for i in range(sample_count):
