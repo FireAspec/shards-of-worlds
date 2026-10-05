@@ -6,6 +6,7 @@ const SfxBank = preload("res://sfx_bank.gd")
 const AmbientFx = preload("res://ambient_fx.gd")
 const MusicBank = preload("res://music_bank.gd")
 const GalleryArtLoader = preload("res://gallery_art_loader.gd")
+const YandexSdk = preload("res://yandex_sdk.gd")
 
 var shards: float = 0.0
 var total_shards: float = 0.0
@@ -19,6 +20,7 @@ var autosave_clock: float = 0.0
 var boost_multiplier: float = 1.0
 var boost_time_left: float = 0.0
 var visible_upgrade_count: int = -1
+var cloud_merge_done: bool = false
 var rng := RandomNumberGenerator.new()
 
 var upgrades := [
@@ -85,17 +87,26 @@ var reward_story: Label
 var boost_label: Label
 var current_art: TextureRect
 var current_art_frame: Panel
+var yandex_sdk
+var leaderboard_button: Button
+var rewarded_button: Button
+var leaderboard_overlay: ColorRect
+var leaderboard_list: VBoxContainer
+var leaderboard_status: Label
 
 func _ready() -> void:
     rng.randomize()
     sfx_bank = SfxBank.new()
     add_child(sfx_bank)
+    yandex_sdk = YandexSdk.new()
+    add_child(yandex_sdk)
     var music_bank := MusicBank.new()
     add_child(music_bank)
     _build_ui()
     _build_fx_layer()
     _build_gallery_overlay()
     _build_reward_overlay()
+    _build_leaderboard_overlay()
     _load_game()
     _recalculate_stats()
     _apply_offline_progress()
@@ -114,6 +125,34 @@ func _process(delta: float) -> void:
         shards += gain
         total_shards += gain
         _check_chapter_unlocks()
+    if is_instance_valid(yandex_sdk):
+        if yandex_sdk.player_ready and not yandex_sdk.cloud_requested:
+            yandex_sdk.request_cloud_data()
+
+        if not cloud_merge_done:
+            var cloud_data: Dictionary = yandex_sdk.consume_cloud_data()
+            if not cloud_data.is_empty():
+                cloud_merge_done = true
+                _merge_cloud_data(cloud_data)
+
+        if yandex_sdk.consume_rewarded():
+            boost_multiplier = 2.0
+            boost_time_left = maxf(boost_time_left, 60.0)
+            event_label.text = "НАГРАДА ЗА РЕКЛАМУ: резонанс ×2 активен на 60 секунд."
+            sfx_bank.play("bonus")
+
+        if is_instance_valid(rewarded_button):
+            rewarded_button.visible = yandex_sdk.enabled
+            rewarded_button.disabled = not yandex_sdk.ready
+
+        if is_instance_valid(leaderboard_button):
+            leaderboard_button.disabled = yandex_sdk.enabled and not yandex_sdk.ready
+
+        if is_instance_valid(leaderboard_overlay) and leaderboard_overlay.visible:
+            var entries: Array = yandex_sdk.consume_leaderboard()
+            if not entries.is_empty():
+                _render_leaderboard(entries)
+
     bonus_clock -= delta
     if bonus_clock <= 0.0 and not is_instance_valid(rare_bonus_button):
         _spawn_rare_bonus()
@@ -181,6 +220,22 @@ func _build_ui() -> void:
     gallery_button.add_theme_font_size_override("font_size", 14)
     gallery_button.pressed.connect(_toggle_gallery)
     header.add_child(gallery_button)
+
+    leaderboard_button = Button.new()
+    leaderboard_button.text = "РЕЙТИНГ"
+    leaderboard_button.custom_minimum_size = Vector2(110, 38)
+    leaderboard_button.add_theme_font_size_override("font_size", 14)
+    leaderboard_button.pressed.connect(_toggle_leaderboard)
+    header.add_child(leaderboard_button)
+
+    rewarded_button = Button.new()
+    rewarded_button.text = "×2 ЗА РЕКЛАМУ"
+    rewarded_button.custom_minimum_size = Vector2(145, 38)
+    rewarded_button.add_theme_font_size_override("font_size", 13)
+    rewarded_button.visible = OS.has_feature("web")
+    rewarded_button.disabled = true
+    rewarded_button.pressed.connect(_on_rewarded_ad_pressed)
+    header.add_child(rewarded_button)
 
     offline_label = Label.new()
     offline_label.text = ""
@@ -470,6 +525,128 @@ func _show_gallery_entry(index: int) -> void:
     else:
         gallery_preview_text.text = "%s\nИллюстрация готовится." % ch["reward"]
     sfx_bank.play("open")
+
+func _build_leaderboard_overlay() -> void:
+    leaderboard_overlay = ColorRect.new()
+    leaderboard_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    leaderboard_overlay.color = Color(0.025, 0.02, 0.07, 0.96)
+    leaderboard_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+    leaderboard_overlay.z_index = 240
+    leaderboard_overlay.visible = false
+    add_child(leaderboard_overlay)
+
+    var center := CenterContainer.new()
+    center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    leaderboard_overlay.add_child(center)
+
+    var panel := PanelContainer.new()
+    panel.custom_minimum_size = Vector2(720, 590)
+    panel.add_theme_stylebox_override("panel", _panel_style(Color("101426"), 22))
+    center.add_child(panel)
+
+    var margin := MarginContainer.new()
+    margin.add_theme_constant_override("margin_left", 24)
+    margin.add_theme_constant_override("margin_right", 24)
+    margin.add_theme_constant_override("margin_top", 20)
+    margin.add_theme_constant_override("margin_bottom", 20)
+    panel.add_child(margin)
+
+    var box := VBoxContainer.new()
+    box.add_theme_constant_override("separation", 12)
+    margin.add_child(box)
+
+    var top := HBoxContainer.new()
+    box.add_child(top)
+
+    var title := Label.new()
+    title.text = "РЕЙТИНГ ВОССТАНОВИТЕЛЕЙ"
+    title.add_theme_font_size_override("font_size", 25)
+    title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    top.add_child(title)
+
+    var close := Button.new()
+    close.text = "Закрыть"
+    close.pressed.connect(_toggle_leaderboard)
+    top.add_child(close)
+
+    leaderboard_status = Label.new()
+    leaderboard_status.text = ""
+    leaderboard_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    leaderboard_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    leaderboard_status.add_theme_color_override("font_color", Color("91a4d0"))
+    box.add_child(leaderboard_status)
+
+    var scroll := ScrollContainer.new()
+    scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    box.add_child(scroll)
+
+    leaderboard_list = VBoxContainer.new()
+    leaderboard_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    leaderboard_list.add_theme_constant_override("separation", 8)
+    scroll.add_child(leaderboard_list)
+
+func _toggle_leaderboard() -> void:
+    leaderboard_overlay.visible = not leaderboard_overlay.visible
+    if not leaderboard_overlay.visible:
+        return
+
+    _clear_leaderboard_rows()
+
+    if not is_instance_valid(yandex_sdk) or not yandex_sdk.enabled:
+        leaderboard_status.text = "Таблица лидеров работает в Web-сборке на Яндекс.Играх."
+        return
+
+    if not yandex_sdk.ready:
+        leaderboard_status.text = "Подключаемся к Яндекс.Играм..."
+        return
+
+    leaderboard_status.text = "Загружаем лучшие результаты..."
+    yandex_sdk.request_leaderboard()
+
+func _clear_leaderboard_rows() -> void:
+    if not is_instance_valid(leaderboard_list):
+        return
+    for child in leaderboard_list.get_children():
+        child.queue_free()
+
+func _render_leaderboard(entries: Array) -> void:
+    _clear_leaderboard_rows()
+    leaderboard_status.text = "Лучшие восстановители по общему числу осколков."
+
+    for raw_entry in entries:
+        if typeof(raw_entry) != TYPE_DICTIONARY:
+            continue
+        var row := HBoxContainer.new()
+        row.custom_minimum_size = Vector2(0, 42)
+
+        var rank := Label.new()
+        rank.text = "#%d" % (int(raw_entry.get("rank", 0)) + 1)
+        rank.custom_minimum_size = Vector2(70, 0)
+        rank.add_theme_font_size_override("font_size", 18)
+        row.add_child(rank)
+
+        var player_name := Label.new()
+        player_name.text = String(raw_entry.get("name", "Игрок"))
+        player_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        player_name.add_theme_font_size_override("font_size", 17)
+        row.add_child(player_name)
+
+        var score := Label.new()
+        score.text = _compact(float(raw_entry.get("score", 0)))
+        score.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+        score.custom_minimum_size = Vector2(150, 0)
+        score.add_theme_color_override("font_color", Color("ffd978"))
+        score.add_theme_font_size_override("font_size", 18)
+        row.add_child(score)
+
+        leaderboard_list.add_child(row)
+
+func _on_rewarded_ad_pressed() -> void:
+    if not is_instance_valid(yandex_sdk) or not yandex_sdk.ready:
+        event_label.text = "Реклама пока недоступна."
+        return
+    event_label.text = "Открываем наградную рекламу..."
+    yandex_sdk.show_rewarded_ad()
 
 func _build_reward_overlay() -> void:
     reward_overlay = ColorRect.new()
@@ -1085,6 +1262,10 @@ func _save_game() -> void:
     if file:
         file.store_string(JSON.stringify(data))
 
+    if is_instance_valid(yandex_sdk) and yandex_sdk.player_ready:
+        yandex_sdk.save_cloud(data)
+        yandex_sdk.submit_score(total_shards)
+
 func _load_game() -> void:
     if not FileAccess.file_exists(SAVE_PATH):
         last_unix = int(Time.get_unix_time_from_system())
@@ -1102,6 +1283,26 @@ func _load_game() -> void:
     var counts = parsed.get("upgrade_counts", [])
     for i in range(min(counts.size(), upgrades.size())):
         upgrades[i]["count"] = int(counts[i])
+
+func _merge_cloud_data(data: Dictionary) -> void:
+    var cloud_time: int = int(data.get("last_unix", 0))
+    if cloud_time <= last_unix:
+        return
+
+    shards = float(data.get("shards", shards))
+    total_shards = float(data.get("total_shards", total_shards))
+    current_chapter = clampi(int(data.get("current_chapter", current_chapter)), 0, chapters.size() - 1)
+    last_unix = cloud_time
+
+    var counts = data.get("upgrade_counts", [])
+    if typeof(counts) == TYPE_ARRAY:
+        for i in range(min(counts.size(), upgrades.size())):
+            upgrades[i]["count"] = int(counts[i])
+
+    _recalculate_stats()
+    _apply_offline_progress()
+    _refresh_all()
+    offline_label.text = "Облачное сохранение Яндекс.Игр загружено."
 
 func _apply_offline_progress() -> void:
     var now: int = int(Time.get_unix_time_from_system())
