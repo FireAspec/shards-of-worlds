@@ -74,6 +74,7 @@ var click_hotspot: Button
 var click_panel: Panel
 var offline_label: Label
 var character_transition_tween: Tween
+var core_hovered: bool = false
 
 var overlay_root: ColorRect
 var overlay_title: Label
@@ -991,6 +992,7 @@ func _select_character(index: int) -> void:
     active_character = index
     bonus_clock = minf(bonus_clock, _next_bonus_delay())
     sfx_bank.play("select")
+    _close_overlay()
     _animate_character_transition()
     _rebuild_automation()
     _refresh_live_labels()
@@ -1095,13 +1097,13 @@ func _animate_core_press(critical: bool) -> void:
     tween_a.tween_property(crystal_ring_a, "scale", target, 0.055)
     tween_a.parallel().tween_property(crystal_ring_a, "modulate:a", 0.72 if critical else 0.50, 0.055)
     tween_a.tween_property(crystal_ring_a, "scale", Vector2.ONE, 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-    tween_a.parallel().tween_property(crystal_ring_a, "modulate:a", 0.25, 0.24)
+    tween_a.parallel().tween_property(crystal_ring_a, "modulate:a", 0.55 if core_hovered else 0.25, 0.24)
 
     var tween_b: Tween = create_tween()
     tween_b.tween_property(crystal_ring_b, "scale", target * 1.05, 0.055)
     tween_b.parallel().tween_property(crystal_ring_b, "modulate:a", 0.80 if critical else 0.58, 0.055)
     tween_b.tween_property(crystal_ring_b, "scale", Vector2.ONE, 0.27).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-    tween_b.parallel().tween_property(crystal_ring_b, "modulate:a", 0.18, 0.27)
+    tween_b.parallel().tween_property(crystal_ring_b, "modulate:a", 0.42 if core_hovered else 0.18, 0.27)
 
     if is_instance_valid(click_panel):
         var panel_tween: Tween = create_tween()
@@ -1140,12 +1142,14 @@ func _spawn_core_ripple(critical: bool) -> void:
     ripple.finished.connect(ring.queue_free)
 
 func _core_hover_on() -> void:
+    core_hovered = true
     var tween: Tween = create_tween()
     tween.set_parallel(true)
     tween.tween_property(crystal_ring_a, "modulate:a", 0.55, 0.18)
     tween.tween_property(crystal_ring_b, "modulate:a", 0.42, 0.18)
 
 func _core_hover_off() -> void:
+    core_hovered = false
     var tween: Tween = create_tween()
     tween.set_parallel(true)
     tween.tween_property(crystal_ring_a, "modulate:a", 0.25, 0.18)
