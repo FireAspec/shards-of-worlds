@@ -1,1467 +1,1000 @@
 extends Control
 
-const SAVE_PATH := "user://shards_save.json"
-const AUTOSAVE_INTERVAL := 5.0
+const SAVE_PATH: String = "user://shards_worlds_save_v3.json"
+const AUTOSAVE_INTERVAL: float = 5.0
+const BONUS_MIN_TIME: float = 20.0
+const BONUS_MAX_TIME: float = 34.0
 const SfxBank = preload("res://sfx_bank.gd")
-const AmbientFx = preload("res://ambient_fx.gd")
 const MusicBank = preload("res://music_bank.gd")
-const GalleryArtLoader = preload("res://gallery_art_loader.gd")
 const BackgroundLoader = preload("res://background_loader.gd")
-const YandexSdk = preload("res://yandex_sdk.gd")
 
 var shards: float = 0.0
 var total_shards: float = 0.0
 var click_power: float = 1.0
 var auto_rate: float = 0.0
-var crit_chance: float = 0.05
-var crit_multiplier: float = 5.0
 var current_chapter: int = 0
 var active_character: int = 0
 var auto_tick_clock: float = 0.0
-var last_unix: int = 0
-var autosave_clock: float = 0.0
+var crit_chance: float = 0.06
+var crit_multiplier: float = 5.0
 var boost_multiplier: float = 1.0
 var boost_time_left: float = 0.0
-var visible_upgrade_count: int = -1
-var cloud_merge_done: bool = false
-var app_has_focus: bool = true
-var audio_is_muted: bool = false
-var rng := RandomNumberGenerator.new()
-
-var upgrades := [
-    {"name":"Укрепить импульс", "base":25.0, "growth":1.65, "count":0, "kind":"click", "value":1.0, "unlock":0.0, "desc":"+1 к силе ручного импульса"},
-    {"name":"Микродрон", "base":60.0, "growth":1.72, "count":0, "kind":"auto", "value":1.0, "unlock":25.0, "desc":"+1 осколок/сек"},
-    {"name":"Рой дронов", "base":650.0, "growth":1.78, "count":0, "kind":"auto", "value":12.0, "unlock":500.0, "desc":"+12 осколков/сек"},
-    {"name":"Станция стабилизации", "base":8500.0, "growth":1.82, "count":0, "kind":"auto", "value":160.0, "unlock":5000.0, "desc":"+160 осколков/сек"},
-    {"name":"Фабрика осколков", "base":125000.0, "growth":1.86, "count":0, "kind":"auto", "value":2400.0, "unlock":50000.0, "desc":"+2.4K осколков/сек"},
-    {"name":"Орбитальный сборщик", "base":2500000.0, "growth":1.9, "count":0, "kind":"auto", "value":42000.0, "unlock":1000000.0, "desc":"+42K осколков/сек"},
-    {"name":"Межмировой комплекс", "base":60000000.0, "growth":1.94, "count":0, "kind":"auto", "value":900000.0, "unlock":20000000.0, "desc":"+900K осколков/сек"},
-    {"name":"Сингулярный экстрактор", "base":1800000000.0, "growth":1.98, "count":0, "kind":"auto", "value":22000000.0, "unlock":500000000.0, "desc":"+22M осколков/сек"},
-    {"name":"Контур вероятностей", "base":35000000000.0, "growth":1.92, "count":0, "kind":"auto", "value":400000000.0, "unlock":10000000000.0, "desc":"+400M осколков/сек"},
-    {"name":"Лунный кластер", "base":800000000000.0, "growth":1.9, "count":0, "kind":"auto", "value":12000000000.0, "unlock":250000000000.0, "desc":"+12B осколков/сек"},
-    {"name":"Ткацкий станок времени", "base":20000000000000.0, "growth":1.88, "count":0, "kind":"auto", "value":400000000000.0, "unlock":5000000000000.0, "desc":"+400B осколков/сек"},
-    {"name":"Реконструктор миров", "base":500000000000000.0, "growth":1.85, "count":0, "kind":"auto", "value":15000000000000.0, "unlock":100000000000000.0, "desc":"+15T осколков/сек"}
-]
-
-var chapters := [
-    {"need":0.0, "title":"Глава I — Первое отражение", "subtitle":"Архив оживает и показывает первое устойчивое отражение.", "story":"Ты находишь повреждённый Архив. Он не помнит, кто его создал, но просит одно: собирать осколки и возвращать утраченные отражения.", "symbol":"◇", "reward":"Судзунэ Хорикита", "rarity":"Обычный", "art":"res://assets/gallery/01_horikita.png", "background":"res://assets/backgrounds/01_horikita.webp", "bonus_kind":"all_income", "bonus_value":0.08, "bonus_text":"+8% ко всему доходу", "quote":"«Слишком много шума. Но твой прогресс... не такой уж и плохой.»"},
-    {"need":100.0, "title":"Глава II — Тёплый сигнал", "subtitle":"Осколки складываются в новое воспоминание.", "story":"Второе отражение приходит вместе с голосом: «Не доверяй Архиву полностью». Сообщение обрывается прежде, чем ты успеваешь ответить.", "symbol":"✦", "reward":"Хонами Ичиносэ", "rarity":"Редкий", "art":"res://assets/gallery/02_ichinose.png", "background":"res://assets/backgrounds/02_ichinose.webp", "bonus_kind":"auto_income", "bonus_value":0.12, "bonus_text":"+12% к пассивному доходу", "quote":"«Я всегда рядом. Спасибо, что проводишь это время со мной...»"},
-    {"need":1000.0, "title":"Глава III — Лунный архив", "subtitle":"В памяти появляется мир, где всё решалось одним выбором.", "story":"Ты замечаешь странность: Архив не просто восстанавливает изображения. Он оценивает их и будто бы составляет собственную коллекцию.", "symbol":"☾", "reward":"Кагуя Синомия", "rarity":"Эпический", "art":"res://assets/gallery/03_kaguya.png", "background":"res://assets/backgrounds/03_kaguya.webp", "bonus_kind":"auto_double_chance", "bonus_value":0.18, "bonus_text":"18% шанс удвоить автофарм", "quote":"«Побеждает не тот, кто спешит, а тот, кто всё просчитывает.»"},
-    {"need":10000.0, "title":"Глава IV — Красная линия", "subtitle":"Стабилизатор впервые собирает полноценную сцену.", "story":"На секунду за изображением проявляется чужая комната и силуэт человека у терминала. Лицо скрыто помехами.", "symbol":"◈", "reward":"Асуна Юки", "rarity":"Эпический", "art":"res://assets/gallery/04_asuna.png", "background":"res://assets/backgrounds/04_asuna.webp", "bonus_kind":"click_power", "bonus_value":0.35, "bonus_text":"+35% к силе клика", "quote":"«Я буду рядом. Мы обязательно дойдём до конца.»"},
-    {"need":100000.0, "title":"Глава V — След чужого мира", "subtitle":"Архив начинает открывать образы из всё более далёких реальностей.", "story":"Система сообщает, что восстановлено меньше половины пути. Ты впервые видишь строку, которой раньше не было: «Поиск совершенного отражения продолжается».", "symbol":"✧", "reward":"Элизабет Лайонес", "rarity":"Эпический", "art":"res://assets/gallery/05_elizabeth.png", "background":"res://assets/backgrounds/05_elizabeth.webp", "bonus_kind":"upgrade_discount", "bonus_value":0.12, "bonus_text":"−12% к стоимости улучшений", "quote":"«Я всегда буду рядом. Пока есть надежда, мы можем идти дальше.»"},
-    {"need":1000000.0, "title":"Глава VI — Риск", "subtitle":"Система предлагает опасную ветку восстановления.", "story":"Архив перегревается и начинает выбрасывать редкие осколки. Они нестабильны, зато на несколько секунд резко ускоряют всю систему.", "symbol":"♠", "reward":"Юмэко Джабами", "rarity":"Эпический", "art":"res://assets/gallery/06_yumeko.png", "background":"res://assets/backgrounds/06_yumeko.webp", "bonus_kind":"resonance_frequency", "bonus_value":0.25, "bonus_text":"+25% к частоте Резонанса", "quote":"«Риск — это не угроза. Это то, что делает жизнь по-настоящему интересной.»"},
-    {"need":10000000.0, "title":"Глава VII — Серебряный свет", "subtitle":"Отражение удерживается уже без ручной стабилизации.", "story":"Автоматизация работает почти самостоятельно. Но чем меньше ты нужен машине, тем чаще она спрашивает: «Ты действительно хочешь увидеть финал?»", "symbol":"❄", "reward":"Эмилия", "rarity":"Эпический", "art":"res://assets/gallery/07_emilia.png", "background":"res://assets/backgrounds/07_emilia.webp", "bonus_kind":"resonance_duration", "bonus_value":0.40, "bonus_text":"+40% к длительности Резонанса", "quote":"«Я хочу быть рядом. Всегда. В этом мире и в любом другом.»"},
-    {"need":100000000.0, "title":"Глава VIII — Долгая память", "subtitle":"Устройство начинает помнить то, что старше его самого.", "story":"В старой памяти находится запись создателя Архива: он хотел собрать самые ценные отражения множества миров и оставить лучшее напоследок.", "symbol":"✤", "reward":"Фрирен", "rarity":"Эпический", "art":"res://assets/gallery/08_frieren.png", "background":"res://assets/backgrounds/08_frieren.webp", "bonus_kind":"offline_income", "bonus_value":1.00, "bonus_text":"+100% к офлайн-доходу", "quote":"«Время течёт. Но хорошие воспоминания всегда остаются рядом.»"},
-    {"need":1000000000.0, "title":"Глава IX — Тихий вечер", "subtitle":"Архив открывает спокойное отражение, за которым чувствуется скрытая опасность.", "story":"Финальные ячейки защищены отдельным протоколом. Названия следующих наград стёрты намеренно. Архив явно не хочет портить сюрприз.", "symbol":"◆", "reward":"Йор Форджер", "rarity":"Эпический", "art":"res://assets/gallery/09_yor.png", "background":"res://assets/backgrounds/09_yor.webp", "bonus_kind":"crit_power", "bonus_value":0.60, "bonus_text":"+60% к силе критического клика", "quote":"«Я просто обычная жена. Но ради тех, кого я люблю, я могу стать кем угодно.»"},
-    {"need":10000000000.0, "title":"Глава X — Свет сцены", "subtitle":"Восстановленное отражение отвечает яркой вспышкой со сцены.", "story":"Внутри ядра появляется шкала «Совершенство», но без процентов. Каждый новый осколок заставляет её сиять всё ярче.", "symbol":"★", "reward":"Руби Хосино", "rarity":"Эпический", "art":"res://assets/gallery/10_ruby.png", "background":"res://assets/backgrounds/10_ruby.webp", "bonus_kind":"task_reward", "bonus_value":0.50, "bonus_text":"+50% к наградам за задания", "quote":"«Я хочу, чтобы ещё больше людей увидели мир, который я люблю! Ведь сиять вместе — это так здорово!»"},
-    {"need":100000000000.0, "title":"Глава XI — Звезда архива", "subtitle":"Система впервые удерживает образ даже во время перегрузки ядра.", "story":"До конца остаётся совсем немного. Последние данные зашифрованы одной фразой: «Идеал нельзя описать. Его можно только увидеть».", "symbol":"✺", "reward":"Ай Хосино", "rarity":"Эпический", "art":"res://assets/gallery/11_ai.png", "background":"res://assets/backgrounds/11_ai.webp", "bonus_kind":"all_income", "bonus_value":0.25, "bonus_text":"+25% ко всему доходу", "quote":"«Я хочу, чтобы как можно больше людей полюбили меня! Ведь я — айдол!»"},
-    {"need":10000000000000.0, "title":"Глава XII — Последняя магия", "subtitle":"Почти все фрагменты заняли свои места.", "story":"Архив подтверждает: следующее отражение — последнее. Ни имени, ни силуэта, ни подсказки. Только абсурдно высокая цена восстановления.", "symbol":"✦", "reward":"Рокси Мигурдия", "rarity":"Эпический", "art":"res://assets/gallery/12_roxy.png", "background":"res://assets/backgrounds/12_roxy.webp", "bonus_kind":"auto_efficiency", "bonus_value":0.35, "bonus_text":"+35% к эффективности автоматизаций", "quote":"«Магия — это не только сила. Это путь, который делает мир чуть шире.»"},
-    {"need":1000000000000000.0, "title":"Глава XIII — Совершенство", "subtitle":"Финальный архив открывается совсем не так, как ожидалось.", "story":"Архив торжественно завершает поиск. После миллиардов, триллионов и квадриллиона осколков система без единой доли сомнения объявляет: «Совершенное отражение найдено». Спорить с ней уже поздно.", "symbol":"∞", "reward":"Аянокоджи", "rarity":"Легендарный", "art":"res://assets/gallery/13_ayanokoji.png", "background":"res://assets/backgrounds/13_ayanokoji.webp", "bonus_kind":"perfection", "bonus_value":1.00, "bonus_text":"+100% ко всему доходу, +100% к клику и +100% к офлайн-доходу", "quote":"«Иногда самый сильный просто наблюдает.»"}
-]
-
-var shard_label: Label
-var total_label: Label
-var click_label: Label
-var auto_label: Label
-var chapter_label: Label
-var chapter_subtitle: Label
-var chapter_progress: ProgressBar
-var chapter_need_label: Label
-var core_button: Button
-var core_glow: ColorRect
-var event_label: Label
-var upgrades_box: VBoxContainer
-var offline_label: Label
-var chapter_symbol: Label
-var fx_layer: Control
-var bonus_clock: float = 18.0
+var bonus_clock: float = 12.0
+var autosave_clock: float = 0.0
+var automation_refresh_clock: float = 0.0
+var upgrade_buy_buttons: Dictionary = {}
+var last_visible_upgrade_count: int = -1
+var last_unix: int = 0
+var total_clicks: int = 0
+var critical_clicks: int = 0
+var caught_bonuses: int = 0
+var session_time: float = 0.0
+var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var sfx_bank: Node
+var music_bank: Node
 var rare_bonus_button: Button
-var last_click_fx_tier: int = 0
-var sfx_bank
-var gallery_button: Button
-var gallery_overlay: ColorRect
-var gallery_grid: GridContainer
-var gallery_preview: TextureRect
-var gallery_preview_text: Label
+
+var ui_font: SystemFont
+var title_font: SystemFont
+
+var shard_value_label: Label
+var shard_rate_label: Label
+var chapter_counter_label: Label
+var task_label: Label
+var task_progress: ProgressBar
+var task_value_label: Label
+var click_gain_label: Label
+var resonance_panel: Panel
+var resonance_title: Label
+var resonance_time_label: Label
+var background_layer: TextureRect
+var main_ui_root: Control
+var character_portrait: TextureRect
+var character_rarity_label: Label
+var character_name_label: Label
+var character_bonus_label: Label
+var character_quote_label: Label
+var automation_header: Label
+var automation_box: VBoxContainer
+var collection_title: Label
+var collection_box: HBoxContainer
+var fx_layer: Control
+var crystal_ring_a: Panel
+var crystal_ring_b: Panel
+var click_hotspot: Button
+var offline_label: Label
+
+var overlay_root: ColorRect
+var overlay_title: Label
+var overlay_content: VBoxContainer
+var overlay_close: Button
+
 var reward_overlay: ColorRect
-var reward_card: PanelContainer
+var reward_card: Panel
+var reward_title: Label
 var reward_art: TextureRect
 var reward_name: Label
-var reward_title: Label
 var reward_story: Label
-var boost_label: Label
-var current_art: TextureRect
-var current_art_frame: Panel
-var background_art: TextureRect
-var yandex_sdk
-var leaderboard_button: Button
-var rewarded_button: Button
-var leaderboard_overlay: ColorRect
-var leaderboard_list: VBoxContainer
-var leaderboard_status: Label
-var auth_button: Button
-var auth_dialog: ConfirmationDialog
+
+var upgrades: Array = [
+    {"name":"Усилитель импульса", "base":20.0, "growth":1.55, "kind":"click", "value":1.0, "unlock":0.0, "count":0, "icon":"✦", "desc":"+1 к силе клика"},
+    {"name":"Кристаллический рудник", "base":60.0, "growth":1.68, "kind":"auto", "value":5.0, "unlock":25.0, "count":0, "icon":"◆", "desc":"+5 / сек"},
+    {"name":"Портал осколков", "base":520.0, "growth":1.72, "kind":"auto", "value":40.0, "unlock":300.0, "count":0, "icon":"◉", "desc":"+40 / сек"},
+    {"name":"Хранилище миров", "base":6200.0, "growth":1.76, "kind":"auto", "value":450.0, "unlock":3500.0, "count":0, "icon":"◇", "desc":"+450 / сек"},
+    {"name":"Сингулярный экстрактор", "base":78000.0, "growth":1.79, "kind":"auto", "value":6500.0, "unlock":42000.0, "count":0, "icon":"◎", "desc":"+6.5K / сек"},
+    {"name":"Орбитальный сборщик", "base":1100000.0, "growth":1.82, "kind":"auto", "value":95000.0, "unlock":650000.0, "count":0, "icon":"✧", "desc":"+95K / сек"},
+    {"name":"Межмировой комплекс", "base":18000000.0, "growth":1.84, "kind":"auto", "value":1600000.0, "unlock":9000000.0, "count":0, "icon":"✺", "desc":"+1.6M / сек"},
+    {"name":"Контур вероятностей", "base":310000000.0, "growth":1.86, "kind":"auto", "value":30000000.0, "unlock":140000000.0, "count":0, "icon":"∞", "desc":"+30M / сек"},
+    {"name":"Лунный кластер", "base":6500000000.0, "growth":1.88, "kind":"auto", "value":720000000.0, "unlock":2500000000.0, "count":0, "icon":"☾", "desc":"+720M / сек"},
+    {"name":"Ткацкий станок времени", "base":145000000000.0, "growth":1.90, "kind":"auto", "value":18000000000.0, "unlock":55000000000.0, "count":0, "icon":"⌛", "desc":"+18B / сек"},
+    {"name":"Архив синхронизации", "base":4200000000000.0, "growth":1.92, "kind":"auto", "value":650000000000.0, "unlock":1300000000000.0, "count":0, "icon":"✣", "desc":"+650B / сек"},
+    {"name":"Реконструктор миров", "base":120000000000000.0, "growth":1.94, "kind":"auto", "value":22000000000000.0, "unlock":35000000000000.0, "count":0, "icon":"✹", "desc":"+22T / сек"}
+]
+
+var chapters: Array = [
+    {"need":0.0, "name":"Судзунэ Хорикита", "art":"res://assets/gallery/01_horikita.png", "background":"res://assets/backgrounds/01_horikita.webp", "wide_layout":false, "rarity":"Обычный", "bonus_kind":"all_income", "bonus_value":0.08, "bonus_text":"Бонус коллекции: +8% ко всему доходу", "quote":"«Слишком много шума. Но твой прогресс... не такой уж и плохой.»", "story":"Повреждённый Архив впервые отвечает на твой импульс. Первое отражение стабилизируется, и система начинает поиск остальных фрагментов."},
+    {"need":100.0, "name":"Хонами Ичиносэ", "art":"res://assets/gallery/02_ichinose.png", "background":"res://assets/backgrounds/02_ichinose.webp", "wide_layout":false, "rarity":"Редкий", "bonus_kind":"auto_income", "bonus_value":0.12, "bonus_text":"+12% к пассивному доходу", "quote":"«Я всегда рядом. Спасибо, что проводишь это время со мной...»", "story":"Второе отражение приносит тёплый сигнал. Вместе с ним появляется предупреждение: Архив хранит больше, чем показывает."},
+    {"need":1000.0, "name":"Кагуя Синомия", "art":"res://assets/gallery/03_kaguya.png", "background":"res://assets/backgrounds/03_kaguya.webp", "wide_layout":false, "rarity":"Эпический", "bonus_kind":"auto_double_chance", "bonus_value":0.18, "bonus_text":"18% шанс удвоить доход автофарма", "quote":"«Побеждает не тот, кто спешит, а тот, кто всё просчитывает.»", "story":"Система начинает оценивать восстановленные данные. В журнале появляется загадочная строка: «Поиск совершенства начат»."},
+    {"need":10000.0, "name":"Асуна Юки", "art":"res://assets/gallery/04_asuna.png", "background":"res://assets/backgrounds/04_asuna.webp", "wide_layout":true, "rarity":"Эпический", "bonus_kind":"click_power", "bonus_value":0.35, "bonus_text":"+35% к силе клика", "quote":"«Я буду рядом. Мы обязательно дойдём до конца.»", "story":"Стабилизатор удерживает целую сцену без сбоев. Теперь Архив способен автоматически собирать часть осколков."},
+    {"need":100000.0, "name":"Элизабет Лайонес", "art":"res://assets/gallery/05_elizabeth.png", "background":"res://assets/backgrounds/05_elizabeth.webp", "wide_layout":true, "rarity":"Эпический", "bonus_kind":"upgrade_discount", "bonus_value":0.12, "bonus_text":"−12% к стоимости улучшений", "quote":"«Я всегда буду рядом. Пока есть надежда, мы можем идти дальше.»", "story":"За отражением обнаруживается след ещё десятков миров. Архив явно выбирал изображения не случайно."},
+    {"need":1000000.0, "name":"Юмэко Джабами", "art":"res://assets/gallery/06_yumeko.png", "background":"res://assets/backgrounds/06_yumeko.webp", "wide_layout":true, "rarity":"Эпический", "bonus_kind":"resonance_frequency", "bonus_value":0.25, "bonus_text":"+25% к шансу редкого Резонанса", "quote":"«Риск — это не угроза. Это то, что делает жизнь по-настоящему интересной.»", "story":"Ядро становится нестабильным и время от времени выбрасывает редкие осколки. Пойманный осколок кратко удваивает всю добычу."},
+    {"need":10000000.0, "name":"Эмилия", "art":"res://assets/gallery/07_emilia.png", "background":"res://assets/backgrounds/07_emilia.webp", "wide_layout":true, "rarity":"Эпический", "bonus_kind":"resonance_duration", "bonus_value":0.40, "bonus_text":"+40% к длительности Резонанса", "quote":"«Я хочу быть рядом. Всегда. В этом мире и в любом другом.»", "story":"Автоматизация работает почти сама. Архив впервые спрашивает напрямую: «Ты действительно хочешь увидеть финал?»"},
+    {"need":100000000.0, "name":"Фрирен", "art":"res://assets/gallery/08_frieren.png", "background":"res://assets/backgrounds/08_frieren.webp", "wide_layout":true, "rarity":"Эпический", "bonus_kind":"offline_income", "bonus_value":1.0, "bonus_text":"+100% к офлайн-доходу", "quote":"«Время течёт. Но хорошие воспоминания всегда остаются рядом.»", "story":"Среди старых данных находится запись создателя: самое ценное отражение он намеренно оставил последним."},
+    {"need":1000000000.0, "name":"Йор Форджер", "art":"res://assets/gallery/09_yor.png", "background":"res://assets/backgrounds/09_yor.webp", "wide_layout":true, "rarity":"Эпический", "bonus_kind":"crit_power", "bonus_value":0.60, "bonus_text":"+60% к силе критического клика", "quote":"«Я просто обычная жена. Но ради тех, кого я люблю, я могу стать кем угодно.»", "story":"Имена будущих отражений полностью стёрты. Архив явно не желает портить сюрприз."},
+    {"need":10000000000.0, "name":"Руби Хосино", "art":"res://assets/gallery/10_ruby.png", "background":"res://assets/backgrounds/10_ruby.webp", "wide_layout":true, "rarity":"Эпический", "bonus_kind":"task_reward", "bonus_value":0.50, "bonus_text":"+50% к наградам за задания", "quote":"«Я хочу, чтобы ещё больше людей увидели мир, который я люблю! Ведь сиять вместе — это так здорово!»", "story":"В ядре появляется скрытая шкала «Совершенство», но без процентов. Чем больше осколков, тем ярче она сияет."},
+    {"need":100000000000.0, "name":"Ай Хосино", "art":"res://assets/gallery/11_ai.png", "background":"res://assets/backgrounds/11_ai.webp", "wide_layout":true, "rarity":"Эпический", "bonus_kind":"all_income", "bonus_value":0.25, "bonus_text":"+25% ко всему доходу", "quote":"«Я хочу, чтобы как можно больше людей полюбили меня! Ведь я — айдол!»", "story":"Последние данные зашифрованы одной фразой: «Идеал нельзя описать. Его можно только увидеть»."},
+    {"need":10000000000000.0, "name":"Рокси Мигурдия", "art":"res://assets/gallery/12_roxy.png", "background":"res://assets/backgrounds/12_roxy.webp", "wide_layout":true, "rarity":"Эпический", "bonus_kind":"auto_efficiency", "bonus_value":0.35, "bonus_text":"+35% к эффективности автоматизаций", "quote":"«Магия — это не только сила. Это путь, который делает мир чуть шире.»", "story":"Архив подтверждает финальный этап. Ни имени, ни силуэта, ни подсказки — только абсурдно высокая цена восстановления."},
+    {"need":1000000000000000.0, "name":"Аянокоджи", "art":"res://assets/gallery/13_ayanokoji.png", "background":"res://assets/backgrounds/13_ayanokoji.webp", "wide_layout":true, "rarity":"Легендарный", "bonus_kind":"perfection", "bonus_value":1.0, "bonus_text":"+100% ко всему доходу, +100% к клику, +100% к офлайн-доходу", "quote":"«Иногда самый сильный просто наблюдает.»", "story":"После миллиардов, триллионов и квадриллиона осколков Архив без единой доли сомнения сообщает: «Совершенное отражение найдено». Спорить с системой уже поздно."}
+]
 
 func _ready() -> void:
     rng.randomize()
+    _make_fonts()
     sfx_bank = SfxBank.new()
     add_child(sfx_bank)
-    yandex_sdk = YandexSdk.new()
-    add_child(yandex_sdk)
-    var music_bank := MusicBank.new()
+    music_bank = MusicBank.new()
     add_child(music_bank)
-    _build_ui()
-    _build_fx_layer()
-    _build_gallery_overlay()
+    _build_screen()
+    _build_generic_overlay()
     _build_reward_overlay()
-    _build_leaderboard_overlay()
     _load_game()
     _recalculate_stats()
     _apply_offline_progress()
     _refresh_all()
-    _start_idle_animation()
+    _start_ambient_animation()
 
 func _process(delta: float) -> void:
-    if boost_time_left > 0.0:
-        boost_time_left = maxf(0.0, boost_time_left - delta)
-        if boost_time_left <= 0.0:
-            boost_multiplier = 1.0
-            event_label.text = "Резонанс угас. Система вернулась в обычный режим."
-
+    session_time += delta
     if auto_rate > 0.0:
         auto_tick_clock += delta
         while auto_tick_clock >= 1.0:
             auto_tick_clock -= 1.0
-            var gain: float = auto_rate * _auto_income_multiplier() * boost_multiplier
+            var gain: float = auto_rate * _auto_income_multiplier() * _all_income_multiplier() * boost_multiplier
             if _active_bonus_kind() == "auto_double_chance" and rng.randf() < _active_bonus_value():
                 gain *= 2.0
-                event_label.text = "КАГУЯ: автофарм удвоен на этот цикл."
+                _spawn_status_text("КАГУЯ • АВТОФАРМ ×2", Color("ffd8ff"))
             shards += gain
             total_shards += gain
-            _check_chapter_unlocks()
-    if is_instance_valid(yandex_sdk):
-        if yandex_sdk.ready and not yandex_sdk.game_ready_sent:
-            yandex_sdk.mark_game_ready()
+            _check_chapter_unlock()
 
-        if yandex_sdk.player_ready and not yandex_sdk.cloud_requested:
-            yandex_sdk.request_cloud_data()
-
-        if not cloud_merge_done:
-            var cloud_data: Dictionary = yandex_sdk.consume_cloud_data()
-            if not cloud_data.is_empty():
-                cloud_merge_done = true
-                _merge_cloud_data(cloud_data)
-
-        if yandex_sdk.consume_rewarded():
-            boost_multiplier = 2.0
-            boost_time_left = maxf(boost_time_left, 60.0)
-            event_label.text = "НАГРАДА ЗА РЕКЛАМУ: резонанс ×2 активен на 60 секунд."
-            sfx_bank.play("bonus")
-
-        if is_instance_valid(rewarded_button):
-            rewarded_button.visible = yandex_sdk.enabled
-            rewarded_button.disabled = not yandex_sdk.ready
-
-        if is_instance_valid(leaderboard_button):
-            leaderboard_button.disabled = yandex_sdk.enabled and not yandex_sdk.ready
-
-        if is_instance_valid(auth_button):
-            auth_button.visible = yandex_sdk.enabled and yandex_sdk.ready and not yandex_sdk.is_authorized()
-
-        if is_instance_valid(leaderboard_overlay) and leaderboard_overlay.visible:
-            var entries: Array = yandex_sdk.consume_leaderboard()
-            if not entries.is_empty():
-                _render_leaderboard(entries)
-
-    _update_audio_mute()
+    if boost_time_left > 0.0:
+        boost_time_left = maxf(0.0, boost_time_left - delta)
+        if boost_time_left <= 0.0:
+            boost_multiplier = 1.0
 
     bonus_clock -= delta
     if bonus_clock <= 0.0 and not is_instance_valid(rare_bonus_button):
         _spawn_rare_bonus()
-        bonus_clock = rng.randf_range(22.0, 38.0) / _resonance_frequency_multiplier()
+        bonus_clock = _next_bonus_delay()
+
+    automation_refresh_clock += delta
+    if automation_refresh_clock >= 0.25:
+        automation_refresh_clock = 0.0
+        _refresh_upgrade_button_states()
+        var visible_now: int = _visible_upgrade_count()
+        if visible_now != last_visible_upgrade_count:
+            _rebuild_automation()
 
     autosave_clock += delta
     if autosave_clock >= AUTOSAVE_INTERVAL:
         autosave_clock = 0.0
         _save_game()
-    _refresh_topbar()
-    _refresh_chapter_progress()
-    var available_count: int = _available_upgrade_count()
-    if available_count != visible_upgrade_count:
-        _rebuild_upgrade_buttons()
+
+    _refresh_live_labels()
 
 func _notification(what: int) -> void:
     if what == NOTIFICATION_WM_CLOSE_REQUEST:
         _save_game()
         get_tree().quit()
-    elif what == NOTIFICATION_APPLICATION_FOCUS_OUT:
-        app_has_focus = false
-        _update_audio_mute()
-    elif what == NOTIFICATION_APPLICATION_FOCUS_IN:
-        app_has_focus = true
-        _update_audio_mute()
 
-func _update_audio_mute() -> void:
-    var ad_open: bool = false
-    if is_instance_valid(yandex_sdk):
-        ad_open = yandex_sdk.is_ad_open()
-
-    var should_mute: bool = not app_has_focus or ad_open
-    if should_mute == audio_is_muted:
+func _unhandled_key_input(event: InputEvent) -> void:
+    if not OS.is_debug_build():
         return
+    if event is InputEventKey:
+        var key_event: InputEventKey = event
+        if key_event.pressed and not key_event.echo and key_event.keycode == KEY_F9:
+            _debug_unlock_next()
 
-    audio_is_muted = should_mute
-    var master_index: int = AudioServer.get_bus_index("Master")
-    if master_index >= 0:
-        AudioServer.set_bus_mute(master_index, should_mute)
+func _make_fonts() -> void:
+    ui_font = SystemFont.new()
+    ui_font.font_names = PackedStringArray(["Georgia", "Times New Roman", "DejaVu Serif"])
+    title_font = SystemFont.new()
+    title_font.font_names = PackedStringArray(["Georgia", "Times New Roman", "DejaVu Serif"])
 
-func _build_ui() -> void:
-    var bg := ColorRect.new()
-    bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    bg.color = Color("070914")
-    add_child(bg)
+func _build_screen() -> void:
+    background_layer = TextureRect.new()
+    background_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    background_layer.texture = BackgroundLoader.load_texture("res://assets/backgrounds/01_horikita.webp")
+    background_layer.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+    background_layer.stretch_mode = TextureRect.STRETCH_SCALE
+    background_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    add_child(background_layer)
 
-    background_art = TextureRect.new()
-    background_art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    background_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-    background_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-    background_art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    background_art.modulate = Color(0.34, 0.37, 0.52, 0.28)
-    add_child(background_art)
+    main_ui_root = Control.new()
+    main_ui_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    add_child(main_ui_root)
 
-    var background_dim := ColorRect.new()
-    background_dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    background_dim.color = Color(0.015, 0.02, 0.065, 0.76)
-    background_dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    add_child(background_dim)
+    fx_layer = Control.new()
+    fx_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    fx_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    fx_layer.z_index = 50
+    main_ui_root.add_child(fx_layer)
 
-    var ambient := AmbientFx.new()
-    add_child(ambient)
-
-    var margin := MarginContainer.new()
-    margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    margin.add_theme_constant_override("margin_left", 28)
-    margin.add_theme_constant_override("margin_right", 28)
-    margin.add_theme_constant_override("margin_top", 24)
-    margin.add_theme_constant_override("margin_bottom", 24)
-    add_child(margin)
-
-    var root := VBoxContainer.new()
-    root.add_theme_constant_override("separation", 16)
-    margin.add_child(root)
-
-    var header := HBoxContainer.new()
-    header.add_theme_constant_override("separation", 22)
-    root.add_child(header)
-
-    var title := Label.new()
-    title.text = "ОСКОЛКИ МИРОВ"
-    title.add_theme_font_size_override("font_size", 28)
-    title.add_theme_color_override("font_color", Color("dce7ff"))
-    title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    header.add_child(title)
-
-    shard_label = _stat_label("Осколки: 0")
-    total_label = _stat_label("Всего: 0")
-    click_label = _stat_label("Клик: +1")
-    auto_label = _stat_label("/сек: 0")
-    header.add_child(shard_label)
-    header.add_child(total_label)
-    header.add_child(click_label)
-    header.add_child(auto_label)
-
-    gallery_button = Button.new()
-    gallery_button.text = "ГАЛЕРЕЯ"
-    gallery_button.custom_minimum_size = Vector2(110, 38)
-    gallery_button.add_theme_font_size_override("font_size", 14)
-    gallery_button.pressed.connect(_toggle_gallery)
-    header.add_child(gallery_button)
-
-    leaderboard_button = Button.new()
-    leaderboard_button.text = "РЕЙТИНГ"
-    leaderboard_button.custom_minimum_size = Vector2(110, 38)
-    leaderboard_button.add_theme_font_size_override("font_size", 14)
-    leaderboard_button.pressed.connect(_toggle_leaderboard)
-    header.add_child(leaderboard_button)
-
-    rewarded_button = Button.new()
-    rewarded_button.text = "×2 ЗА РЕКЛАМУ"
-    rewarded_button.custom_minimum_size = Vector2(145, 38)
-    rewarded_button.add_theme_font_size_override("font_size", 13)
-    rewarded_button.visible = OS.has_feature("web")
-    rewarded_button.disabled = true
-    rewarded_button.pressed.connect(_on_rewarded_ad_pressed)
-    header.add_child(rewarded_button)
-
-    auth_button = Button.new()
-    auth_button.text = "ВОЙТИ"
-    auth_button.custom_minimum_size = Vector2(90, 38)
-    auth_button.add_theme_font_size_override("font_size", 13)
-    auth_button.visible = false
-    auth_button.pressed.connect(_show_auth_dialog)
-    header.add_child(auth_button)
-
-    auth_dialog = ConfirmationDialog.new()
-    auth_dialog.title = "Вход в Яндекс"
-    auth_dialog.dialog_text = "Вход нужен только для облачного сохранения и участия в таблице лидеров. Без входа можно продолжать играть как обычно."
-    auth_dialog.ok_button_text = "Войти"
-    auth_dialog.cancel_button_text = "Не сейчас"
-    auth_dialog.confirmed.connect(_confirm_yandex_auth)
-    add_child(auth_dialog)
+    _build_top_counter()
+    _build_secondary_counter()
+    _build_character_panel()
+    _build_automation_panel()
+    _build_task_panel()
+    _build_click_area()
+    _build_resonance_panel()
+    _build_collection_panel()
+    _build_menu_hotspots()
+    _build_top_hotspots()
 
     offline_label = Label.new()
-    offline_label.text = ""
+    offline_label.position = Vector2(720, 128)
+    offline_label.size = Vector2(620, 40)
     offline_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    offline_label.add_theme_color_override("font_color", Color("8ddcff"))
-    root.add_child(offline_label)
-
-    boost_label = Label.new()
-    boost_label.text = ""
-    boost_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    boost_label.add_theme_font_size_override("font_size", 16)
-    boost_label.add_theme_color_override("font_color", Color("ffd978"))
-    root.add_child(boost_label)
-
-    var body := HBoxContainer.new()
-    body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    body.add_theme_constant_override("separation", 18)
-    root.add_child(body)
-
-    var left_panel := PanelContainer.new()
-    left_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    left_panel.size_flags_stretch_ratio = 1.45
-    left_panel.add_theme_stylebox_override("panel", _panel_style(Color("11172b"), 22))
-    body.add_child(left_panel)
-
-    var left_margin := MarginContainer.new()
-    left_margin.add_theme_constant_override("margin_left", 24)
-    left_margin.add_theme_constant_override("margin_right", 24)
-    left_margin.add_theme_constant_override("margin_top", 24)
-    left_margin.add_theme_constant_override("margin_bottom", 24)
-    left_panel.add_child(left_margin)
-
-    var left := VBoxContainer.new()
-    left.alignment = BoxContainer.ALIGNMENT_CENTER
-    left.add_theme_constant_override("separation", 14)
-    left_margin.add_child(left)
-
-    chapter_label = Label.new()
-    chapter_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    chapter_label.add_theme_font_size_override("font_size", 26)
-    chapter_label.add_theme_color_override("font_color", Color("f3f6ff"))
-    left.add_child(chapter_label)
-
-    chapter_subtitle = Label.new()
-    chapter_subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    chapter_subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    chapter_subtitle.add_theme_font_size_override("font_size", 17)
-    chapter_subtitle.add_theme_color_override("font_color", Color("aab8d8"))
-    left.add_child(chapter_subtitle)
-
-    var stage := CenterContainer.new()
-    stage.custom_minimum_size = Vector2(0, 330)
-    stage.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    left.add_child(stage)
-
-    var stage_holder := Control.new()
-    stage_holder.custom_minimum_size = Vector2(660, 300)
-    stage.add_child(stage_holder)
-
-    current_art_frame = Panel.new()
-    current_art_frame.position = Vector2(0, 4)
-    current_art_frame.size = Vector2(286, 286)
-    current_art_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    current_art_frame.add_theme_stylebox_override("panel", _panel_style(Color("141a31"), 20))
-    stage_holder.add_child(current_art_frame)
-
-    current_art = TextureRect.new()
-    current_art.position = Vector2(8, 8)
-    current_art.size = Vector2(270, 270)
-    current_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-    current_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-    current_art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    current_art.modulate = Color(1.0, 1.0, 1.0, 0.96)
-    current_art_frame.add_child(current_art)
-
-    core_glow = ColorRect.new()
-    core_glow.position = Vector2(355, 25)
-    core_glow.size = Vector2(250, 250)
-    core_glow.color = Color(0.24, 0.48, 1.0, 0.08)
-    core_glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    stage_holder.add_child(core_glow)
-
-    core_button = Button.new()
-    core_button.text = "◇"
-    core_button.position = Vector2(380, 50)
-    core_button.size = Vector2(200, 200)
-    core_button.add_theme_font_size_override("font_size", 74)
-    core_button.add_theme_color_override("font_color", Color("eaf2ff"))
-    core_button.add_theme_stylebox_override("normal", _round_button_style(Color("243966"), Color("5f8cff"), 100))
-    core_button.add_theme_stylebox_override("hover", _round_button_style(Color("2d477b"), Color("7ba0ff"), 100))
-    core_button.add_theme_stylebox_override("pressed", _round_button_style(Color("18284b"), Color("9ab7ff"), 100))
-    core_button.pressed.connect(_on_core_pressed)
-    stage_holder.add_child(core_button)
-
-    chapter_symbol = Label.new()
-    chapter_symbol.text = ""
-    chapter_symbol.position = Vector2(442, 258)
-    chapter_symbol.size = Vector2(80, 40)
-    chapter_symbol.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    chapter_symbol.add_theme_font_size_override("font_size", 20)
-    chapter_symbol.add_theme_color_override("font_color", Color("7388b9"))
-    stage_holder.add_child(chapter_symbol)
-
-    chapter_progress = ProgressBar.new()
-    chapter_progress.show_percentage = false
-    chapter_progress.custom_minimum_size = Vector2(0, 18)
-    left.add_child(chapter_progress)
-
-    chapter_need_label = Label.new()
-    chapter_need_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    chapter_need_label.add_theme_color_override("font_color", Color("7f90b8"))
-    left.add_child(chapter_need_label)
-
-    event_label = Label.new()
-    event_label.text = "Импульс стабилен. Нажми на ядро."
-    event_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    event_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    event_label.add_theme_color_override("font_color", Color("bcd0ff"))
-    left.add_child(event_label)
-
-    var right_panel := PanelContainer.new()
-    right_panel.custom_minimum_size = Vector2(390, 0)
-    right_panel.add_theme_stylebox_override("panel", _panel_style(Color("0e1427"), 22))
-    body.add_child(right_panel)
-
-    var right_margin := MarginContainer.new()
-    right_margin.add_theme_constant_override("margin_left", 18)
-    right_margin.add_theme_constant_override("margin_right", 18)
-    right_margin.add_theme_constant_override("margin_top", 18)
-    right_margin.add_theme_constant_override("margin_bottom", 18)
-    right_panel.add_child(right_margin)
-
-    var right := VBoxContainer.new()
-    right.add_theme_constant_override("separation", 10)
-    right_margin.add_child(right)
-
-    var upgrades_title := Label.new()
-    upgrades_title.text = "ПРОКАЧКА СИСТЕМЫ"
-    upgrades_title.add_theme_font_size_override("font_size", 21)
-    upgrades_title.add_theme_color_override("font_color", Color("e4ebff"))
-    right.add_child(upgrades_title)
-
-    var scroll := ScrollContainer.new()
-    scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    right.add_child(scroll)
-
-    upgrades_box = VBoxContainer.new()
-    upgrades_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    upgrades_box.add_theme_constant_override("separation", 9)
-    scroll.add_child(upgrades_box)
-
-    _rebuild_upgrade_buttons()
-
-func _build_gallery_overlay() -> void:
-    gallery_overlay = ColorRect.new()
-    gallery_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    gallery_overlay.color = Color(0.025, 0.02, 0.07, 0.96)
-    gallery_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
-    gallery_overlay.z_index = 200
-    gallery_overlay.visible = false
-    add_child(gallery_overlay)
-
-    var center := CenterContainer.new()
-    center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    gallery_overlay.add_child(center)
-
-    var panel := PanelContainer.new()
-    panel.custom_minimum_size = Vector2(1040, 620)
-    panel.add_theme_stylebox_override("panel", _panel_style(Color("101426"), 22))
-    center.add_child(panel)
-
-    var margin := MarginContainer.new()
-    margin.add_theme_constant_override("margin_left", 22)
-    margin.add_theme_constant_override("margin_right", 22)
-    margin.add_theme_constant_override("margin_top", 18)
-    margin.add_theme_constant_override("margin_bottom", 18)
-    panel.add_child(margin)
-
-    var layout := VBoxContainer.new()
-    layout.add_theme_constant_override("separation", 14)
-    margin.add_child(layout)
-
-    var top := HBoxContainer.new()
-    layout.add_child(top)
-
-    var title := Label.new()
-    title.text = "АРХИВ ОТРАЖЕНИЙ"
-    title.add_theme_font_size_override("font_size", 26)
-    title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    top.add_child(title)
-
-    var close := Button.new()
-    close.text = "Закрыть"
-    close.pressed.connect(_toggle_gallery)
-    top.add_child(close)
-
-    var content := HBoxContainer.new()
-    content.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    content.add_theme_constant_override("separation", 18)
-    layout.add_child(content)
-
-    var scroll := ScrollContainer.new()
-    scroll.custom_minimum_size = Vector2(520, 0)
-    scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    content.add_child(scroll)
-
-    gallery_grid = GridContainer.new()
-    gallery_grid.columns = 2
-    gallery_grid.add_theme_constant_override("h_separation", 10)
-    gallery_grid.add_theme_constant_override("v_separation", 10)
-    scroll.add_child(gallery_grid)
-
-    var preview_box := VBoxContainer.new()
-    preview_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    preview_box.add_theme_constant_override("separation", 12)
-    content.add_child(preview_box)
-
-    gallery_preview = TextureRect.new()
-    gallery_preview.custom_minimum_size = Vector2(430, 430)
-    gallery_preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-    gallery_preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-    preview_box.add_child(gallery_preview)
-
-    gallery_preview_text = Label.new()
-    gallery_preview_text.text = "Здесь появляются только уже восстановленные отражения."
-    gallery_preview_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    gallery_preview_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    gallery_preview_text.add_theme_font_size_override("font_size", 18)
-    gallery_preview_text.add_theme_color_override("font_color", Color("cbd7f7"))
-    preview_box.add_child(gallery_preview_text)
-
-    _rebuild_gallery_cards()
-
-func _toggle_gallery() -> void:
-    gallery_overlay.visible = not gallery_overlay.visible
-    if gallery_overlay.visible:
-        _rebuild_gallery_cards()
-        sfx_bank.play("open")
-
-func _rebuild_gallery_cards() -> void:
-    if not is_instance_valid(gallery_grid):
-        return
-    for child in gallery_grid.get_children():
-        child.queue_free()
-
-    for i in range(chapters.size()):
-        if i > current_chapter:
-            continue
-        var ch = chapters[i]
-        var card := Button.new()
-        card.custom_minimum_size = Vector2(245, 118)
-        card.alignment = HORIZONTAL_ALIGNMENT_LEFT
-        card.add_theme_font_size_override("font_size", 14)
-        var active_mark: String = "  •  АКТИВЕН" if i == active_character else ""
-        card.text = "%s%s\n%s\n%s" % [ch["reward"], active_mark, ch["rarity"], ch["bonus_text"]]
-        var art_path: String = String(ch["art"])
-        var texture: Texture2D = GalleryArtLoader.load_texture(art_path)
-        if texture != null:
-            card.icon = texture
-            card.expand_icon = true
-        card.pressed.connect(_select_character.bind(i))
-        gallery_grid.add_child(card)
-
-func _select_character(index: int) -> void:
-    if index < 0 or index > current_chapter or index >= chapters.size():
-        return
-    active_character = index
-    var ch = chapters[active_character]
-    event_label.text = "Активный персонаж: %s  •  %s" % [ch["reward"], ch["bonus_text"]]
-    _show_gallery_entry(index)
-    _refresh_all()
-    _rebuild_gallery_cards()
-    _save_game()
-
-func _show_gallery_entry(index: int) -> void:
-    if index < 0 or index > current_chapter or index >= chapters.size():
-        return
-    var ch = chapters[index]
-    var art_path: String = String(ch["art"])
-    gallery_preview.texture = GalleryArtLoader.load_texture(art_path)
-    gallery_preview_text.text = "%s  •  %s\n%s\n%s\n\n%s" % [ch["reward"], ch["rarity"], ch["bonus_text"], ch["subtitle"], ch["quote"]]
-    sfx_bank.play("open")
-
-func _build_leaderboard_overlay() -> void:
-    leaderboard_overlay = ColorRect.new()
-    leaderboard_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    leaderboard_overlay.color = Color(0.025, 0.02, 0.07, 0.96)
-    leaderboard_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
-    leaderboard_overlay.z_index = 240
-    leaderboard_overlay.visible = false
-    add_child(leaderboard_overlay)
-
-    var center := CenterContainer.new()
-    center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    leaderboard_overlay.add_child(center)
-
-    var panel := PanelContainer.new()
-    panel.custom_minimum_size = Vector2(720, 590)
-    panel.add_theme_stylebox_override("panel", _panel_style(Color("101426"), 22))
-    center.add_child(panel)
-
-    var margin := MarginContainer.new()
-    margin.add_theme_constant_override("margin_left", 24)
-    margin.add_theme_constant_override("margin_right", 24)
-    margin.add_theme_constant_override("margin_top", 20)
-    margin.add_theme_constant_override("margin_bottom", 20)
-    panel.add_child(margin)
-
-    var box := VBoxContainer.new()
-    box.add_theme_constant_override("separation", 12)
-    margin.add_child(box)
-
-    var top := HBoxContainer.new()
-    box.add_child(top)
-
-    var title := Label.new()
-    title.text = "РЕЙТИНГ ВОССТАНОВИТЕЛЕЙ"
-    title.add_theme_font_size_override("font_size", 25)
-    title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    top.add_child(title)
-
-    var close := Button.new()
-    close.text = "Закрыть"
-    close.pressed.connect(_toggle_leaderboard)
-    top.add_child(close)
-
-    leaderboard_status = Label.new()
-    leaderboard_status.text = ""
-    leaderboard_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    leaderboard_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    leaderboard_status.add_theme_color_override("font_color", Color("91a4d0"))
-    box.add_child(leaderboard_status)
-
-    var scroll := ScrollContainer.new()
-    scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    box.add_child(scroll)
-
-    leaderboard_list = VBoxContainer.new()
-    leaderboard_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    leaderboard_list.add_theme_constant_override("separation", 8)
-    scroll.add_child(leaderboard_list)
-
-func _toggle_leaderboard() -> void:
-    leaderboard_overlay.visible = not leaderboard_overlay.visible
-    if not leaderboard_overlay.visible:
-        return
-
-    _clear_leaderboard_rows()
-
-    if not is_instance_valid(yandex_sdk) or not yandex_sdk.enabled:
-        leaderboard_status.text = "Таблица лидеров работает в Web-сборке на Яндекс.Играх."
-        return
-
-    if not yandex_sdk.ready:
-        leaderboard_status.text = "Подключаемся к Яндекс.Играм..."
-        return
-
-    leaderboard_status.text = "Загружаем лучшие результаты..."
-    yandex_sdk.request_leaderboard()
-
-func _clear_leaderboard_rows() -> void:
-    if not is_instance_valid(leaderboard_list):
-        return
-    for child in leaderboard_list.get_children():
-        child.queue_free()
-
-func _render_leaderboard(entries: Array) -> void:
-    _clear_leaderboard_rows()
-    leaderboard_status.text = "Лучшие восстановители по общему числу осколков."
-
-    for raw_entry in entries:
-        if typeof(raw_entry) != TYPE_DICTIONARY:
-            continue
-        var row := HBoxContainer.new()
-        row.custom_minimum_size = Vector2(0, 42)
-
-        var rank := Label.new()
-        rank.text = "#%d" % (int(raw_entry.get("rank", 0)) + 1)
-        rank.custom_minimum_size = Vector2(70, 0)
-        rank.add_theme_font_size_override("font_size", 18)
-        row.add_child(rank)
-
-        var player_name := Label.new()
-        player_name.text = String(raw_entry.get("name", "Игрок"))
-        player_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-        player_name.add_theme_font_size_override("font_size", 17)
-        row.add_child(player_name)
-
-        var score := Label.new()
-        score.text = _compact(float(raw_entry.get("score", 0)))
-        score.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-        score.custom_minimum_size = Vector2(150, 0)
-        score.add_theme_color_override("font_color", Color("ffd978"))
-        score.add_theme_font_size_override("font_size", 18)
-        row.add_child(score)
-
-        leaderboard_list.add_child(row)
-
-func _show_auth_dialog() -> void:
-    if not is_instance_valid(yandex_sdk) or not yandex_sdk.ready:
-        return
-    auth_dialog.popup_centered(Vector2i(500, 230))
-
-func _confirm_yandex_auth() -> void:
-    if not is_instance_valid(yandex_sdk) or not yandex_sdk.ready:
-        return
-    event_label.text = "Открываем вход в Яндекс..."
-    yandex_sdk.open_auth_dialog()
-
-func _on_rewarded_ad_pressed() -> void:
-    if not is_instance_valid(yandex_sdk) or not yandex_sdk.ready:
-        event_label.text = "Реклама пока недоступна."
-        return
-    event_label.text = "Открываем наградную рекламу..."
-    yandex_sdk.show_rewarded_ad()
+    offline_label.add_theme_font_override("font", ui_font)
+    offline_label.add_theme_font_size_override("font_size", 20)
+    offline_label.add_theme_color_override("font_color", Color("e5c5ff"))
+    offline_label.add_theme_color_override("font_shadow_color", Color(0,0,0,0.9))
+    offline_label.add_theme_constant_override("shadow_offset_x", 2)
+    offline_label.add_theme_constant_override("shadow_offset_y", 2)
+    main_ui_root.add_child(offline_label)
+
+func _build_top_counter() -> void:
+    var cover: Panel = Panel.new()
+    cover.position = Vector2(844, 24)
+    cover.size = Vector2(376, 92)
+    cover.add_theme_stylebox_override("panel", _glass_style(Color(0.018,0.035,0.09,0.94), Color(0.36,0.33,0.72,0.72), 10, 8))
+    main_ui_root.add_child(cover)
+
+    shard_value_label = Label.new()
+    shard_value_label.position = Vector2(8, 0)
+    shard_value_label.size = Vector2(360, 58)
+    shard_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    shard_value_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+    shard_value_label.add_theme_font_override("font", title_font)
+    shard_value_label.add_theme_font_size_override("font_size", 42)
+    shard_value_label.add_theme_color_override("font_color", Color("f9f3ff"))
+    cover.add_child(shard_value_label)
+
+    shard_rate_label = Label.new()
+    shard_rate_label.position = Vector2(8, 53)
+    shard_rate_label.size = Vector2(360, 32)
+    shard_rate_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    shard_rate_label.add_theme_font_override("font", ui_font)
+    shard_rate_label.add_theme_font_size_override("font_size", 21)
+    shard_rate_label.add_theme_color_override("font_color", Color("e7e0ff"))
+    cover.add_child(shard_rate_label)
+
+func _build_secondary_counter() -> void:
+    var cover: Panel = Panel.new()
+    cover.position = Vector2(1300, 23)
+    cover.size = Vector2(165, 76)
+    cover.add_theme_stylebox_override("panel", _glass_style(Color(0.04,0.025,0.10,0.94), Color(0.63,0.32,0.92,0.70), 8, 7))
+    main_ui_root.add_child(cover)
+
+    chapter_counter_label = Label.new()
+    chapter_counter_label.position = Vector2(5, 5)
+    chapter_counter_label.size = Vector2(100, 66)
+    chapter_counter_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    chapter_counter_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+    chapter_counter_label.add_theme_font_override("font", title_font)
+    chapter_counter_label.add_theme_font_size_override("font_size", 28)
+    chapter_counter_label.add_theme_color_override("font_color", Color("fff4ff"))
+    cover.add_child(chapter_counter_label)
+
+    var plus: Button = Button.new()
+    plus.text = "+"
+    plus.position = Vector2(108, 8)
+    plus.size = Vector2(50, 58)
+    plus.add_theme_font_override("font", title_font)
+    plus.add_theme_font_size_override("font_size", 30)
+    plus.add_theme_stylebox_override("normal", _button_style(Color(0.12,0.07,0.22,0.9), Color(0.74,0.45,1.0,0.8), 8))
+    plus.add_theme_stylebox_override("hover", _button_style(Color(0.22,0.08,0.35,0.95), Color(0.95,0.67,1.0,1.0), 8))
+    plus.pressed.connect(_open_gallery)
+    cover.add_child(plus)
+
+func _build_character_panel() -> void:
+    var panel: Panel = Panel.new()
+    panel.position = Vector2(1538, 136)
+    panel.size = Vector2(478, 435)
+    panel.add_theme_stylebox_override("panel", _glass_style(Color(0.015,0.026,0.066,0.97), Color(0.36,0.37,0.71,0.82), 16, 10))
+    main_ui_root.add_child(panel)
+
+    var header: Label = Label.new()
+    header.text = "Текущий персонаж"
+    header.position = Vector2(28, 12)
+    header.size = Vector2(360, 45)
+    header.add_theme_font_override("font", title_font)
+    header.add_theme_font_size_override("font_size", 28)
+    header.add_theme_color_override("font_color", Color("f6f0ff"))
+    panel.add_child(header)
+
+    var gallery_btn: Button = Button.new()
+    gallery_btn.text = "↻"
+    gallery_btn.position = Vector2(418, 9)
+    gallery_btn.size = Vector2(44, 42)
+    gallery_btn.flat = true
+    gallery_btn.add_theme_font_size_override("font_size", 28)
+    gallery_btn.add_theme_color_override("font_color", Color("f7f2ff"))
+    gallery_btn.pressed.connect(_open_gallery)
+    panel.add_child(gallery_btn)
+
+    character_portrait = TextureRect.new()
+    character_portrait.position = Vector2(24, 72)
+    character_portrait.size = Vector2(190, 245)
+    character_portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+    character_portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+    panel.add_child(character_portrait)
+
+    character_name_label = Label.new()
+    character_name_label.position = Vector2(230, 76)
+    character_name_label.size = Vector2(230, 42)
+    character_name_label.add_theme_font_override("font", title_font)
+    character_name_label.add_theme_font_size_override("font_size", 25)
+    character_name_label.add_theme_color_override("font_color", Color("fff7ff"))
+    character_name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    panel.add_child(character_name_label)
+
+    character_rarity_label = Label.new()
+    character_rarity_label.position = Vector2(230, 127)
+    character_rarity_label.size = Vector2(220, 32)
+    character_rarity_label.add_theme_font_override("font", ui_font)
+    character_rarity_label.add_theme_font_size_override("font_size", 18)
+    character_rarity_label.add_theme_color_override("font_color", Color("ded4ff"))
+    panel.add_child(character_rarity_label)
+
+    character_bonus_label = Label.new()
+    character_bonus_label.position = Vector2(230, 166)
+    character_bonus_label.size = Vector2(225, 78)
+    character_bonus_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    character_bonus_label.add_theme_font_override("font", ui_font)
+    character_bonus_label.add_theme_font_size_override("font_size", 18)
+    character_bonus_label.add_theme_color_override("font_color", Color("f7e6ff"))
+    panel.add_child(character_bonus_label)
+
+    character_quote_label = Label.new()
+    character_quote_label.position = Vector2(230, 247)
+    character_quote_label.size = Vector2(225, 92)
+    character_quote_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    character_quote_label.add_theme_font_override("font", ui_font)
+    character_quote_label.add_theme_font_size_override("font_size", 17)
+    character_quote_label.add_theme_color_override("font_color", Color("d8d1e9"))
+    panel.add_child(character_quote_label)
+
+    var story_btn: Button = Button.new()
+    story_btn.text = "История"
+    story_btn.position = Vector2(258, 354)
+    story_btn.size = Vector2(185, 52)
+    story_btn.add_theme_font_override("font", ui_font)
+    story_btn.add_theme_font_size_override("font_size", 18)
+    story_btn.add_theme_stylebox_override("normal", _button_style(Color(0.07,0.04,0.12,0.94), Color(0.59,0.36,0.75,0.72), 18))
+    story_btn.add_theme_stylebox_override("hover", _button_style(Color(0.16,0.06,0.24,0.97), Color(0.92,0.58,1.0,1.0), 18))
+    story_btn.pressed.connect(_open_current_story)
+    panel.add_child(story_btn)
+
+func _build_automation_panel() -> void:
+    var panel: Panel = Panel.new()
+    panel.position = Vector2(1544, 598)
+    panel.size = Vector2(474, 380)
+    panel.add_theme_stylebox_override("panel", _glass_style(Color(0.012,0.025,0.063,0.97), Color(0.36,0.38,0.72,0.82), 16, 10))
+    main_ui_root.add_child(panel)
+
+    automation_header = Label.new()
+    automation_header.position = Vector2(26, 10)
+    automation_header.size = Vector2(400, 46)
+    automation_header.add_theme_font_override("font", title_font)
+    automation_header.add_theme_font_size_override("font_size", 27)
+    automation_header.add_theme_color_override("font_color", Color("f5efff"))
+    panel.add_child(automation_header)
+
+    var scroll: ScrollContainer = ScrollContainer.new()
+    scroll.position = Vector2(20, 62)
+    scroll.size = Vector2(436, 300)
+    panel.add_child(scroll)
+
+    automation_box = VBoxContainer.new()
+    automation_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    automation_box.add_theme_constant_override("separation", 8)
+    scroll.add_child(automation_box)
+
+func _build_task_panel() -> void:
+    var panel: Panel = Panel.new()
+    panel.position = Vector2(38, 770)
+    panel.size = Vector2(663, 190)
+    panel.add_theme_stylebox_override("panel", _glass_style(Color(0.012,0.024,0.064,0.97), Color(0.41,0.42,0.76,0.80), 16, 10))
+    main_ui_root.add_child(panel)
+
+    var title: Label = Label.new()
+    title.text = "✣  Текущее задание"
+    title.position = Vector2(20, 12)
+    title.size = Vector2(420, 44)
+    title.add_theme_font_override("font", title_font)
+    title.add_theme_font_size_override("font_size", 27)
+    title.add_theme_color_override("font_color", Color("f9f4ff"))
+    panel.add_child(title)
+
+    var crystal_icon: Label = Label.new()
+    crystal_icon.text = "♦"
+    crystal_icon.position = Vector2(25, 70)
+    crystal_icon.size = Vector2(70, 80)
+    crystal_icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    crystal_icon.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+    crystal_icon.add_theme_font_size_override("font_size", 54)
+    crystal_icon.add_theme_color_override("font_color", Color("a978ff"))
+    crystal_icon.add_theme_color_override("font_shadow_color", Color(0.55,0.1,1.0,0.8))
+    crystal_icon.add_theme_constant_override("shadow_offset_x", 3)
+    crystal_icon.add_theme_constant_override("shadow_offset_y", 3)
+    panel.add_child(crystal_icon)
+
+    task_label = Label.new()
+    task_label.position = Vector2(112, 70)
+    task_label.size = Vector2(430, 34)
+    task_label.add_theme_font_override("font", ui_font)
+    task_label.add_theme_font_size_override("font_size", 21)
+    task_label.add_theme_color_override("font_color", Color("fff8ff"))
+    panel.add_child(task_label)
+
+    task_progress = ProgressBar.new()
+    task_progress.position = Vector2(112, 112)
+    task_progress.size = Vector2(415, 22)
+    task_progress.show_percentage = false
+    task_progress.add_theme_stylebox_override("background", _progress_bg_style())
+    task_progress.add_theme_stylebox_override("fill", _progress_fill_style())
+    panel.add_child(task_progress)
+
+    task_value_label = Label.new()
+    task_value_label.position = Vector2(112, 139)
+    task_value_label.size = Vector2(415, 32)
+    task_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    task_value_label.add_theme_font_override("font", ui_font)
+    task_value_label.add_theme_font_size_override("font_size", 18)
+    task_value_label.add_theme_color_override("font_color", Color("ebe6ff"))
+    panel.add_child(task_value_label)
+
+    var go_btn: Button = Button.new()
+    go_btn.text = "→"
+    go_btn.position = Vector2(575, 77)
+    go_btn.size = Vector2(62, 76)
+    go_btn.add_theme_font_size_override("font_size", 34)
+    go_btn.add_theme_stylebox_override("normal", _button_style(Color(0.08,0.05,0.16,0.96), Color(0.54,0.39,0.79,0.85), 10))
+    go_btn.add_theme_stylebox_override("hover", _button_style(Color(0.17,0.06,0.26,0.98), Color(0.94,0.59,1.0,1.0), 10))
+    go_btn.pressed.connect(_focus_click_area)
+    panel.add_child(go_btn)
+
+func _build_click_area() -> void:
+    click_hotspot = Button.new()
+    click_hotspot.text = ""
+    click_hotspot.position = Vector2(650, 510)
+    click_hotspot.size = Vector2(630, 420)
+    click_hotspot.flat = true
+    click_hotspot.focus_mode = Control.FOCUS_NONE
+    click_hotspot.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+    click_hotspot.pressed.connect(_on_core_pressed)
+    click_hotspot.mouse_entered.connect(_core_hover_on)
+    click_hotspot.mouse_exited.connect(_core_hover_off)
+    main_ui_root.add_child(click_hotspot)
+
+    crystal_ring_a = Panel.new()
+    crystal_ring_a.position = Vector2(825, 520)
+    crystal_ring_a.size = Vector2(350, 350)
+    crystal_ring_a.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    crystal_ring_a.pivot_offset = crystal_ring_a.size / 2.0
+    crystal_ring_a.modulate.a = 0.25
+    crystal_ring_a.add_theme_stylebox_override("panel", _ring_style(Color(0.66,0.31,1.0,0.65), 4))
+    main_ui_root.add_child(crystal_ring_a)
+
+    crystal_ring_b = Panel.new()
+    crystal_ring_b.position = Vector2(865, 560)
+    crystal_ring_b.size = Vector2(270, 270)
+    crystal_ring_b.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    crystal_ring_b.pivot_offset = crystal_ring_b.size / 2.0
+    crystal_ring_b.modulate.a = 0.18
+    crystal_ring_b.add_theme_stylebox_override("panel", _ring_style(Color(0.92,0.55,1.0,0.75), 3))
+    main_ui_root.add_child(crystal_ring_b)
+
+    var click_panel: Panel = Panel.new()
+    click_panel.position = Vector2(785, 790)
+    click_panel.size = Vector2(390, 135)
+    click_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    click_panel.add_theme_stylebox_override("panel", _click_style())
+    main_ui_root.add_child(click_panel)
+
+    var click_title: Label = Label.new()
+    click_title.text = "Клик"
+    click_title.position = Vector2(10, 14)
+    click_title.size = Vector2(370, 55)
+    click_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    click_title.add_theme_font_override("font", title_font)
+    click_title.add_theme_font_size_override("font_size", 42)
+    click_title.add_theme_color_override("font_color", Color("fff8ff"))
+    click_panel.add_child(click_title)
+
+    click_gain_label = Label.new()
+    click_gain_label.position = Vector2(10, 70)
+    click_gain_label.size = Vector2(370, 45)
+    click_gain_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    click_gain_label.add_theme_font_override("font", title_font)
+    click_gain_label.add_theme_font_size_override("font_size", 29)
+    click_gain_label.add_theme_color_override("font_color", Color("f0d9ff"))
+    click_panel.add_child(click_gain_label)
+
+func _build_resonance_panel() -> void:
+    resonance_panel = Panel.new()
+    resonance_panel.position = Vector2(1250, 798)
+    resonance_panel.size = Vector2(218, 142)
+    resonance_panel.add_theme_stylebox_override("panel", _resonance_style(false))
+    main_ui_root.add_child(resonance_panel)
+
+    resonance_title = Label.new()
+    resonance_title.position = Vector2(8, 25)
+    resonance_title.size = Vector2(202, 45)
+    resonance_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    resonance_title.add_theme_font_override("font", title_font)
+    resonance_title.add_theme_font_size_override("font_size", 27)
+    resonance_title.add_theme_color_override("font_color", Color("ffd9ae"))
+    resonance_panel.add_child(resonance_title)
+
+    resonance_time_label = Label.new()
+    resonance_time_label.position = Vector2(8, 76)
+    resonance_time_label.size = Vector2(202, 40)
+    resonance_time_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    resonance_time_label.add_theme_font_override("font", ui_font)
+    resonance_time_label.add_theme_font_size_override("font_size", 17)
+    resonance_time_label.add_theme_color_override("font_color", Color("fff1df"))
+    resonance_panel.add_child(resonance_time_label)
+
+func _build_collection_panel() -> void:
+    var panel: Panel = Panel.new()
+    panel.position = Vector2(20, 1000)
+    panel.size = Vector2(2005, 320)
+    panel.add_theme_stylebox_override("panel", _glass_style(Color(0.009,0.023,0.055,0.975), Color(0.50,0.35,0.79,0.80), 18, 12))
+    main_ui_root.add_child(panel)
+
+    collection_title = Label.new()
+    collection_title.position = Vector2(30, 10)
+    collection_title.size = Vector2(620, 48)
+    collection_title.add_theme_font_override("font", title_font)
+    collection_title.add_theme_font_size_override("font_size", 28)
+    collection_title.add_theme_color_override("font_color", Color("f8f2ff"))
+    panel.add_child(collection_title)
+
+    var open_btn: Button = Button.new()
+    open_btn.text = "Открыть галерею"
+    open_btn.position = Vector2(1710, 13)
+    open_btn.size = Vector2(250, 45)
+    open_btn.add_theme_font_override("font", ui_font)
+    open_btn.add_theme_font_size_override("font_size", 16)
+    open_btn.add_theme_stylebox_override("normal", _button_style(Color(0.08,0.05,0.16,0.96), Color(0.65,0.46,0.85,0.85), 16))
+    open_btn.add_theme_stylebox_override("hover", _button_style(Color(0.17,0.06,0.26,0.98), Color(0.94,0.59,1.0,1.0), 16))
+    open_btn.pressed.connect(_open_gallery)
+    panel.add_child(open_btn)
+
+    var scroll: ScrollContainer = ScrollContainer.new()
+    scroll.position = Vector2(22, 70)
+    scroll.size = Vector2(1955, 225)
+    panel.add_child(scroll)
+
+    collection_box = HBoxContainer.new()
+    collection_box.add_theme_constant_override("separation", 14)
+    scroll.add_child(collection_box)
+
+func _build_menu_hotspots() -> void:
+    _menu_hotspot(Rect2(18, 250, 270, 72), _show_home)
+    _menu_hotspot(Rect2(18, 335, 270, 72), _open_gallery)
+    _menu_hotspot(Rect2(18, 420, 270, 72), _open_tasks)
+    _menu_hotspot(Rect2(18, 505, 270, 72), _open_achievements)
+    _menu_hotspot(Rect2(18, 590, 270, 72), _open_settings)
+
+func _build_top_hotspots() -> void:
+    _menu_hotspot(Rect2(1568, 17, 78, 78), _open_achievements)
+    _menu_hotspot(Rect2(1660, 17, 78, 78), _open_stats)
+    _menu_hotspot(Rect2(1752, 17, 78, 78), _open_settings)
+
+func _menu_hotspot(rect: Rect2, callback: Callable) -> void:
+    var button: Button = Button.new()
+    button.position = rect.position
+    button.size = rect.size
+    button.text = ""
+    button.flat = true
+    button.focus_mode = Control.FOCUS_NONE
+    button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+    button.pressed.connect(callback)
+    main_ui_root.add_child(button)
+
+func _build_generic_overlay() -> void:
+    overlay_root = ColorRect.new()
+    overlay_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    overlay_root.color = Color(0.015,0.008,0.04,0.93)
+    overlay_root.mouse_filter = Control.MOUSE_FILTER_STOP
+    overlay_root.z_index = 200
+    overlay_root.visible = false
+    add_child(overlay_root)
+
+    var panel: Panel = Panel.new()
+    panel.position = Vector2(240, 120)
+    panel.size = Vector2(1568, 1110)
+    panel.add_theme_stylebox_override("panel", _glass_style(Color(0.014,0.025,0.064,0.98), Color(0.53,0.38,0.83,0.90), 28, 18))
+    overlay_root.add_child(panel)
+
+    overlay_title = Label.new()
+    overlay_title.position = Vector2(44, 30)
+    overlay_title.size = Vector2(1200, 60)
+    overlay_title.add_theme_font_override("font", title_font)
+    overlay_title.add_theme_font_size_override("font_size", 42)
+    overlay_title.add_theme_color_override("font_color", Color("fff6ff"))
+    panel.add_child(overlay_title)
+
+    overlay_close = Button.new()
+    overlay_close.text = "Закрыть"
+    overlay_close.position = Vector2(1320, 28)
+    overlay_close.size = Vector2(190, 56)
+    overlay_close.add_theme_font_override("font", ui_font)
+    overlay_close.add_theme_font_size_override("font_size", 18)
+    overlay_close.add_theme_stylebox_override("normal", _button_style(Color(0.08,0.05,0.16,0.96), Color(0.65,0.46,0.85,0.85), 16))
+    overlay_close.add_theme_stylebox_override("hover", _button_style(Color(0.17,0.06,0.26,0.98), Color(0.94,0.59,1.0,1.0), 16))
+    overlay_close.pressed.connect(_close_overlay)
+    panel.add_child(overlay_close)
+
+    var scroll: ScrollContainer = ScrollContainer.new()
+    scroll.position = Vector2(42, 110)
+    scroll.size = Vector2(1484, 950)
+    panel.add_child(scroll)
+
+    overlay_content = VBoxContainer.new()
+    overlay_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    overlay_content.add_theme_constant_override("separation", 18)
+    scroll.add_child(overlay_content)
 
 func _build_reward_overlay() -> void:
     reward_overlay = ColorRect.new()
     reward_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    reward_overlay.color = Color(0.015, 0.01, 0.04, 0.0)
+    reward_overlay.color = Color(0.012,0.005,0.03,0.95)
     reward_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
     reward_overlay.z_index = 300
     reward_overlay.visible = false
     add_child(reward_overlay)
 
-    var center := CenterContainer.new()
-    center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    reward_overlay.add_child(center)
-
-    reward_card = PanelContainer.new()
-    reward_card.custom_minimum_size = Vector2(560, 690)
-    reward_card.add_theme_stylebox_override("panel", _panel_style(Color("171226"), 26))
-    reward_card.pivot_offset = Vector2(260, 305)
-    center.add_child(reward_card)
-
-    var margin := MarginContainer.new()
-    margin.add_theme_constant_override("margin_left", 20)
-    margin.add_theme_constant_override("margin_right", 20)
-    margin.add_theme_constant_override("margin_top", 18)
-    margin.add_theme_constant_override("margin_bottom", 18)
-    reward_card.add_child(margin)
-
-    var box := VBoxContainer.new()
-    box.alignment = BoxContainer.ALIGNMENT_CENTER
-    box.add_theme_constant_override("separation", 12)
-    margin.add_child(box)
+    reward_card = Panel.new()
+    reward_card.position = Vector2(574, 92)
+    reward_card.size = Vector2(900, 1180)
+    reward_card.pivot_offset = reward_card.size / 2.0
+    reward_card.add_theme_stylebox_override("panel", _glass_style(Color(0.018,0.024,0.063,0.99), Color(0.66,0.39,0.98,0.94), 30, 24))
+    reward_overlay.add_child(reward_card)
 
     reward_title = Label.new()
-    reward_title.text = "НОВОЕ ОТРАЖЕНИЕ"
+    reward_title.position = Vector2(30, 28)
+    reward_title.size = Vector2(840, 75)
     reward_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    reward_title.add_theme_font_size_override("font_size", 24)
-    reward_title.add_theme_color_override("font_color", Color("f7dfff"))
-    box.add_child(reward_title)
+    reward_title.add_theme_font_override("font", title_font)
+    reward_title.add_theme_font_size_override("font_size", 44)
+    reward_title.add_theme_color_override("font_color", Color("fff5ff"))
+    reward_card.add_child(reward_title)
 
     reward_art = TextureRect.new()
-    reward_art.custom_minimum_size = Vector2(420, 420)
+    reward_art.position = Vector2(145, 120)
+    reward_art.size = Vector2(610, 610)
     reward_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-    reward_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-    box.add_child(reward_art)
+    reward_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+    reward_card.add_child(reward_art)
 
     reward_name = Label.new()
+    reward_name.position = Vector2(40, 755)
+    reward_name.size = Vector2(820, 70)
     reward_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    reward_name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    reward_name.add_theme_font_size_override("font_size", 28)
-    reward_name.add_theme_color_override("font_color", Color("ffffff"))
-    box.add_child(reward_name)
+    reward_name.add_theme_font_override("font", title_font)
+    reward_name.add_theme_font_size_override("font_size", 38)
+    reward_name.add_theme_color_override("font_color", Color("fff6ff"))
+    reward_card.add_child(reward_name)
 
     reward_story = Label.new()
-    reward_story.custom_minimum_size = Vector2(0, 66)
+    reward_story.position = Vector2(95, 845)
+    reward_story.size = Vector2(710, 170)
     reward_story.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     reward_story.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
     reward_story.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    reward_story.add_theme_font_size_override("font_size", 16)
-    reward_story.add_theme_color_override("font_color", Color("bbc8e8"))
-    box.add_child(reward_story)
+    reward_story.add_theme_font_override("font", ui_font)
+    reward_story.add_theme_font_size_override("font_size", 21)
+    reward_story.add_theme_color_override("font_color", Color("ded8ef"))
+    reward_card.add_child(reward_story)
 
-    var close := Button.new()
-    close.text = "В галерею"
-    close.custom_minimum_size = Vector2(0, 46)
-    close.pressed.connect(_close_reward_overlay)
-    box.add_child(close)
+    var close: Button = Button.new()
+    close.text = "Продолжить"
+    close.position = Vector2(300, 1050)
+    close.size = Vector2(300, 74)
+    close.add_theme_font_override("font", title_font)
+    close.add_theme_font_size_override("font_size", 24)
+    close.add_theme_stylebox_override("normal", _button_style(Color(0.15,0.05,0.24,0.98), Color(0.76,0.42,1.0,0.95), 20))
+    close.add_theme_stylebox_override("hover", _button_style(Color(0.28,0.07,0.40,0.99), Color(1.0,0.68,1.0,1.0), 20))
+    close.pressed.connect(_close_reward)
+    reward_card.add_child(close)
 
-func _show_reward_overlay(index: int) -> void:
-    if index < 0 or index >= chapters.size():
+func _refresh_all() -> void:
+    _refresh_live_labels()
+    _refresh_character()
+    _rebuild_automation()
+    _rebuild_collection()
+
+func _refresh_live_labels() -> void:
+    if not is_instance_valid(shard_value_label):
         return
-    var ch = chapters[index]
-    var is_final: bool = index == chapters.size() - 1
-    reward_title.text = "ТЫ ДОСТИГ СОВЕРШЕНСТВА" if is_final else "НОВОЕ ОТРАЖЕНИЕ"
-    reward_title.add_theme_color_override("font_color", Color("ffd978") if is_final else Color("f7dfff"))
-    reward_name.text = String(ch["reward"])
-    reward_story.text = String(ch["story"])
-    reward_art.texture = null
-    var art_path: String = String(ch["art"])
-    var texture: Texture2D = GalleryArtLoader.load_texture(art_path)
-    if texture != null:
-        reward_art.texture = texture
+    shard_value_label.text = _compact(shards)
+    shard_rate_label.text = "+%s / сек" % _compact(auto_rate * _display_auto_multiplier() * _all_income_multiplier() * boost_multiplier)
+    chapter_counter_label.text = "✧  %d/13" % (current_chapter + 1)
+    click_gain_label.text = "♦  +%s" % _compact(click_power * _click_multiplier() * _all_income_multiplier() * boost_multiplier)
 
-    reward_overlay.visible = true
-    reward_overlay.color.a = 0.0
-    reward_card.modulate.a = 0.0
-    reward_card.scale = Vector2(0.72, 0.72)
+    if current_chapter >= chapters.size() - 1:
+        task_label.text = "Совершенство достигнуто"
+        task_progress.value = 100.0
+        task_value_label.text = "%s осколков собрано" % _compact(total_shards)
+    else:
+        var next_need: float = float(chapters[current_chapter + 1]["need"])
+        var from_need: float = float(chapters[current_chapter]["need"])
+        var span: float = maxf(1.0, next_need - from_need)
+        var pct: float = clampf((total_shards - from_need) / span * 100.0, 0.0, 100.0)
+        task_label.text = "Собрать %s осколков" % _compact(next_need)
+        task_progress.value = pct
+        task_value_label.text = "%s / %s" % [_compact(total_shards), _compact(next_need)]
 
-    var tween := create_tween()
-    tween.set_parallel(true)
-    tween.tween_property(reward_overlay, "color:a", 0.97 if is_final else 0.94, 0.28)
-    tween.tween_property(reward_card, "modulate:a", 1.0, 0.28)
-    tween.tween_property(reward_card, "scale", Vector2.ONE, 0.58 if is_final else 0.42).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+    if boost_time_left > 0.0:
+        resonance_panel.add_theme_stylebox_override("panel", _resonance_style(true))
+        resonance_title.text = "Резонанс ×2"
+        resonance_time_label.text = "Осталось: %02d:%02d" % [int(int(boost_time_left) / 60), int(boost_time_left) % 60]
+    else:
+        resonance_panel.add_theme_stylebox_override("panel", _resonance_style(false))
+        resonance_title.text = "Резонанс"
+        resonance_time_label.text = "Поймай редкий осколок"
 
-    var spark_count: int = 110 if is_final else 52
-    for i in range(spark_count):
-        _spawn_reveal_spark()
+func _refresh_character() -> void:
+    active_character = clampi(active_character, 0, current_chapter)
+    var chapter: Dictionary = chapters[active_character]
+    character_portrait.texture = load(String(chapter["art"]))
+    character_name_label.text = String(chapter["name"])
+    character_rarity_label.text = "✧  %s" % String(chapter["rarity"])
+    character_bonus_label.text = String(chapter["bonus_text"])
+    character_quote_label.text = String(chapter["quote"])
+    collection_title.text = "✧  Моя коллекция  (%d/13)" % (current_chapter + 1)
+    _apply_character_background(false)
 
-    if is_final:
-        sfx_bank.play("crit")
-        var base_pos: Vector2 = position
-        var shake := create_tween()
-        shake.tween_property(self, "position", base_pos + Vector2(-12, 4), 0.05)
-        shake.tween_property(self, "position", base_pos + Vector2(11, -3), 0.05)
-        shake.tween_property(self, "position", base_pos + Vector2(-8, 2), 0.05)
-        shake.tween_property(self, "position", base_pos + Vector2(6, -1), 0.05)
-        shake.tween_property(self, "position", base_pos, 0.08)
-
-func _close_reward_overlay() -> void:
-    if not is_instance_valid(reward_overlay) or not reward_overlay.visible:
+func _rebuild_automation() -> void:
+    if not is_instance_valid(automation_box):
         return
-    var tween := create_tween()
-    tween.set_parallel(true)
-    tween.tween_property(reward_overlay, "color:a", 0.0, 0.20)
-    tween.tween_property(reward_card, "modulate:a", 0.0, 0.18)
-    tween.tween_property(reward_card, "scale", Vector2(0.90, 0.90), 0.20)
-    tween.finished.connect(_finish_close_reward)
+    for child in automation_box.get_children():
+        automation_box.remove_child(child)
+        child.queue_free()
+    upgrade_buy_buttons.clear()
 
-func _finish_close_reward() -> void:
-    reward_overlay.visible = false
-    _toggle_gallery()
+    var visible_count: int = _visible_upgrade_count()
+    last_visible_upgrade_count = visible_count
+    automation_header.text = "Автоматизации  (%d/12)" % visible_count
 
-func _build_fx_layer() -> void:
-    fx_layer = Control.new()
-    fx_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    fx_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    fx_layer.z_index = 100
-    add_child(fx_layer)
+    for i in range(upgrades.size()):
+        var up: Dictionary = upgrades[i]
+        if total_shards < float(up["unlock"]):
+            continue
+        automation_box.add_child(_make_upgrade_row(i))
 
-func _stat_label(text_value: String) -> Label:
-    var label := Label.new()
-    label.text = text_value
-    label.add_theme_font_size_override("font_size", 16)
-    label.add_theme_color_override("font_color", Color("a9b9db"))
-    return label
+    if visible_count == 0:
+        var hint: Label = _small_text("Первая технология откроется очень скоро.")
+        automation_box.add_child(hint)
 
-func _panel_style(color: Color, radius: int) -> StyleBoxFlat:
-    var style := StyleBoxFlat.new()
-    style.bg_color = color
-    style.corner_radius_top_left = radius
-    style.corner_radius_top_right = radius
-    style.corner_radius_bottom_left = radius
-    style.corner_radius_bottom_right = radius
-    style.border_width_left = 1
-    style.border_width_top = 1
-    style.border_width_right = 1
-    style.border_width_bottom = 1
-    style.border_color = Color(0.28, 0.37, 0.62, 0.25)
-    return style
 
-func _round_button_style(bg_color: Color, border_color: Color, radius: int) -> StyleBoxFlat:
-    var style := StyleBoxFlat.new()
-    style.bg_color = bg_color
-    style.corner_radius_top_left = radius
-    style.corner_radius_top_right = radius
-    style.corner_radius_bottom_left = radius
-    style.corner_radius_bottom_right = radius
-    style.border_width_left = 4
-    style.border_width_top = 4
-    style.border_width_right = 4
-    style.border_width_bottom = 4
-    style.border_color = border_color
-    style.shadow_color = Color(0.2, 0.45, 1.0, 0.28)
-    style.shadow_size = 18
-    return style
-
-func _upgrade_style(can_buy: bool) -> StyleBoxFlat:
-    var style := StyleBoxFlat.new()
-    style.bg_color = Color("18223f") if can_buy else Color("101729")
-    style.corner_radius_top_left = 14
-    style.corner_radius_top_right = 14
-    style.corner_radius_bottom_left = 14
-    style.corner_radius_bottom_right = 14
-    style.border_width_left = 1
-    style.border_width_top = 1
-    style.border_width_right = 1
-    style.border_width_bottom = 1
-    style.border_color = Color("4f6fb0") if can_buy else Color("29334e")
-    return style
-
-func _on_core_pressed() -> void:
-    var amount: float = click_power * _click_income_multiplier() * boost_multiplier
-    var critical: bool = rng.randf() < crit_chance
-    if critical:
-        amount *= crit_multiplier * _critical_power_multiplier()
-    shards += amount
-    total_shards += amount
-    event_label.text = ("КРИТИЧЕСКИЙ ИМПУЛЬС! +%s" if critical else "+%s осколков") % _compact(amount)
-    sfx_bank.play("crit" if critical else "click")
-    _spawn_float_text(amount, critical)
-    _spawn_click_particles(critical)
-    _animate_click(critical)
-    _check_chapter_unlocks()
-    _refresh_all()
-
-func _spawn_click_particles(critical: bool) -> void:
-    if not is_instance_valid(fx_layer):
-        return
-
-    var tier: int = mini(5, 1 + int(log(maxf(click_power, 1.0)) / log(10.0)))
-    last_click_fx_tier = tier
-    var particle_count: int = 6 + tier * 3 + (8 if critical else 0)
-    var center: Vector2 = core_button.global_position + core_button.size / 2.0
-
-    for i in range(particle_count):
-        var spark := ColorRect.new()
-        var size_px: float = rng.randf_range(3.0, 7.0 + float(tier))
-        spark.size = Vector2(size_px, size_px)
-        spark.position = center - spark.size / 2.0
-        spark.color = Color.from_hsv(rng.randf_range(0.53, 0.72), 0.55, 1.0, 0.92)
-        spark.rotation = rng.randf_range(-PI, PI)
-        spark.mouse_filter = Control.MOUSE_FILTER_IGNORE
-        fx_layer.add_child(spark)
-
-        var angle: float = rng.randf_range(0.0, TAU)
-        var distance: float = rng.randf_range(35.0, 75.0 + 16.0 * float(tier))
-        if critical:
-            distance *= 1.35
-        var target: Vector2 = spark.position + Vector2(cos(angle), sin(angle)) * distance
-        var duration: float = rng.randf_range(0.28, 0.55)
-        var tween := create_tween()
-        tween.set_parallel(true)
-        tween.tween_property(spark, "position", target, duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-        tween.tween_property(spark, "modulate:a", 0.0, duration)
-        tween.tween_property(spark, "rotation", spark.rotation + rng.randf_range(-2.0, 2.0), duration)
-        tween.finished.connect(spark.queue_free)
-
-    if tier >= 3 or critical:
-        _spawn_energy_ring(center, critical)
-
-func _spawn_energy_ring(center: Vector2, critical: bool) -> void:
-    var ring := Panel.new()
-    var diameter: float = 56.0 if not critical else 78.0
-    ring.size = Vector2(diameter, diameter)
-    ring.position = center - ring.size / 2.0
-    ring.pivot_offset = ring.size / 2.0
-    ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    var style := StyleBoxFlat.new()
-    style.bg_color = Color(0, 0, 0, 0)
-    style.border_width_left = 3 if critical else 2
-    style.border_width_top = 3 if critical else 2
-    style.border_width_right = 3 if critical else 2
-    style.border_width_bottom = 3 if critical else 2
-    style.border_color = Color(0.62, 0.82, 1.0, 0.9) if not critical else Color(1.0, 0.84, 0.38, 0.95)
-    style.corner_radius_top_left = int(diameter / 2.0)
-    style.corner_radius_top_right = int(diameter / 2.0)
-    style.corner_radius_bottom_left = int(diameter / 2.0)
-    style.corner_radius_bottom_right = int(diameter / 2.0)
-    ring.add_theme_stylebox_override("panel", style)
-    fx_layer.add_child(ring)
-
-    var tween := create_tween()
-    tween.set_parallel(true)
-    tween.tween_property(ring, "scale", Vector2(3.0, 3.0) if critical else Vector2(2.2, 2.2), 0.36)
-    tween.tween_property(ring, "modulate:a", 0.0, 0.36)
-    tween.finished.connect(ring.queue_free)
-
-func _spawn_float_text(amount: float, critical: bool) -> void:
-    var pop := Label.new()
-    pop.text = "+%s" % _compact(amount)
-    pop.add_theme_font_size_override("font_size", 24 if not critical else 30)
-    pop.add_theme_color_override("font_color", Color("a9c2ff") if not critical else Color("fff0a6"))
-    pop.position = core_button.global_position + Vector2(74, 50)
-    pop.z_index = 50
-    add_child(pop)
-    var tween := create_tween()
-    tween.set_parallel(true)
-    tween.tween_property(pop, "position", pop.position + Vector2(rng.randf_range(-35.0, 35.0), -95), 0.75).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-    tween.tween_property(pop, "modulate:a", 0.0, 0.75)
-    tween.finished.connect(pop.queue_free)
-
-func _animate_click(critical: bool) -> void:
-    core_button.pivot_offset = core_button.size / 2.0
-    var tween := create_tween()
-    tween.tween_property(core_button, "scale", Vector2(0.92, 0.92), 0.06)
-    tween.tween_property(core_button, "scale", Vector2(1.0, 1.0), 0.12).set_trans(Tween.TRANS_BACK)
-    if critical:
-        var base := position
-        var shake := create_tween()
-        shake.tween_property(self, "position", base + Vector2(-7, 0), 0.035)
-        shake.tween_property(self, "position", base + Vector2(7, 0), 0.035)
-        shake.tween_property(self, "position", base, 0.05)
-
-func _start_idle_animation() -> void:
-    core_glow.pivot_offset = core_glow.size / 2.0
-    var tween := create_tween().set_loops()
-    tween.tween_property(core_glow, "scale", Vector2(1.08, 1.08), 1.4).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-    tween.tween_property(core_glow, "scale", Vector2(0.94, 0.94), 1.4).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-
-    if is_instance_valid(current_art):
-        current_art.pivot_offset = current_art.size / 2.0
-        var art_tween := create_tween().set_loops()
-        art_tween.tween_property(current_art, "scale", Vector2(1.025, 1.025), 2.8).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-        art_tween.tween_property(current_art, "scale", Vector2.ONE, 2.8).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-
-    if is_instance_valid(background_art):
-        background_art.pivot_offset = size / 2.0
-        var bg_tween := create_tween().set_loops()
-        bg_tween.tween_property(background_art, "scale", Vector2(1.035, 1.035), 7.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-        bg_tween.tween_property(background_art, "scale", Vector2.ONE, 7.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-
-func _available_upgrade_count() -> int:
+func _visible_upgrade_count() -> int:
     var count: int = 0
     for up in upgrades:
         if total_shards >= float(up["unlock"]):
             count += 1
     return count
 
-func _rebuild_upgrade_buttons() -> void:
-    for child in upgrades_box.get_children():
+func _refresh_upgrade_button_states() -> void:
+    for key in upgrade_buy_buttons.keys():
+        var index: int = int(key)
+        var button: Button = upgrade_buy_buttons[key]
+        if is_instance_valid(button):
+            var cost: float = _upgrade_cost(index)
+            button.disabled = shards < cost
+            button.text = "♦  %s" % _compact(cost)
+
+func _make_upgrade_row(index: int) -> Control:
+    var up: Dictionary = upgrades[index]
+    var row: Panel = Panel.new()
+    row.custom_minimum_size = Vector2(420, 78)
+    row.add_theme_stylebox_override("panel", _glass_style(Color(0.02,0.045,0.09,0.93), Color(0.18,0.29,0.52,0.78), 10, 4))
+
+    var icon: Label = Label.new()
+    icon.text = String(up["icon"])
+    icon.position = Vector2(8, 8)
+    icon.size = Vector2(58, 58)
+    icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    icon.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+    icon.add_theme_font_size_override("font_size", 34)
+    icon.add_theme_color_override("font_color", Color("78c9ff"))
+    row.add_child(icon)
+
+    var name_label: Label = Label.new()
+    name_label.text = "%s  Lv.%d" % [String(up["name"]), int(up["count"])]
+    name_label.position = Vector2(72, 8)
+    name_label.size = Vector2(230, 30)
+    name_label.add_theme_font_override("font", ui_font)
+    name_label.add_theme_font_size_override("font_size", 16)
+    name_label.add_theme_color_override("font_color", Color("f3eeff"))
+    row.add_child(name_label)
+
+    var desc: Label = Label.new()
+    desc.text = String(up["desc"])
+    desc.position = Vector2(72, 40)
+    desc.size = Vector2(220, 28)
+    desc.add_theme_font_override("font", ui_font)
+    desc.add_theme_font_size_override("font_size", 15)
+    desc.add_theme_color_override("font_color", Color("cfd9ef"))
+    row.add_child(desc)
+
+    var cost: float = _upgrade_cost(index)
+    var buy: Button = Button.new()
+    buy.text = "♦  %s" % _compact(cost)
+    buy.position = Vector2(302, 13)
+    buy.size = Vector2(110, 52)
+    buy.disabled = shards < cost
+    buy.add_theme_font_override("font", ui_font)
+    buy.add_theme_font_size_override("font_size", 15)
+    buy.add_theme_color_override("font_color", Color("fff3ff"))
+    buy.add_theme_stylebox_override("normal", _button_style(Color(0.14,0.07,0.24,0.98), Color(0.67,0.42,0.92,0.84), 8))
+    buy.add_theme_stylebox_override("hover", _button_style(Color(0.24,0.08,0.36,0.99), Color(0.96,0.64,1.0,1.0), 8))
+    buy.add_theme_stylebox_override("disabled", _button_style(Color(0.055,0.065,0.095,0.95), Color(0.20,0.22,0.31,0.7), 8))
+    buy.pressed.connect(_buy_upgrade.bind(index))
+    row.add_child(buy)
+    upgrade_buy_buttons[index] = buy
+    return row
+
+func _rebuild_collection() -> void:
+    if not is_instance_valid(collection_box):
+        return
+    for child in collection_box.get_children():
         child.queue_free()
 
-    visible_upgrade_count = _available_upgrade_count()
-    var next_unlock: float = -1.0
+    for i in range(current_chapter + 1):
+        collection_box.add_child(_make_collection_card(i))
 
-    for i in range(upgrades.size()):
-        var up = upgrades[i]
-        var unlock_need: float = float(up["unlock"])
-        if total_shards < unlock_need:
-            if next_unlock < 0.0 or unlock_need < next_unlock:
-                next_unlock = unlock_need
-            continue
+func _make_collection_card(index: int) -> Control:
+    var chapter: Dictionary = chapters[index]
+    var card: Panel = Panel.new()
+    card.custom_minimum_size = Vector2(145, 215)
+    var border_color: Color = Color("ffd36f") if index == active_character else Color(0.66,0.28,0.74,0.86)
+    card.add_theme_stylebox_override("panel", _glass_style(Color(0.025,0.035,0.07,0.98), border_color, 10, 8 if index == active_character else 6))
 
-        var cost: float = _upgrade_cost(i)
-        var btn := Button.new()
-        btn.custom_minimum_size = Vector2(0, 82)
-        btn.text = "%s  Lv.%d\n%s\nЦена: %s" % [up["name"], up["count"], up["desc"], _compact(cost)]
-        btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-        btn.add_theme_font_size_override("font_size", 15)
-        btn.add_theme_color_override("font_color", Color("d7e1ff"))
-        btn.add_theme_stylebox_override("normal", _upgrade_style(shards >= cost))
-        btn.add_theme_stylebox_override("hover", _upgrade_style(true))
-        btn.add_theme_stylebox_override("pressed", _upgrade_style(true))
-        btn.pressed.connect(_buy_upgrade.bind(i))
-        upgrades_box.add_child(btn)
+    var art: TextureRect = TextureRect.new()
+    art.position = Vector2(7, 7)
+    art.size = Vector2(131, 158)
+    art.texture = load(String(chapter["art"]))
+    art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+    art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+    card.add_child(art)
 
-    if next_unlock >= 0.0:
-        var locked_hint := Label.new()
-        locked_hint.text = "Следующая технология откроется при общем доходе %s." % _compact(next_unlock)
-        locked_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-        locked_hint.add_theme_color_override("font_color", Color("7584aa"))
-        locked_hint.add_theme_font_size_override("font_size", 14)
-        upgrades_box.add_child(locked_hint)
+    var name_label: Label = Label.new()
+    name_label.text = String(chapter["name"])
+    name_label.position = Vector2(5, 169)
+    name_label.size = Vector2(135, 40)
+    name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+    name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    name_label.add_theme_font_override("font", ui_font)
+    name_label.add_theme_font_size_override("font_size", 12)
+    name_label.add_theme_color_override("font_color", Color("f9f3ff"))
+    card.add_child(name_label)
 
-func _buy_upgrade(index: int) -> void:
-    var cost: float = _upgrade_cost(index)
-    if shards < cost:
-        event_label.text = "Не хватает осколков: нужно %s." % _compact(cost)
+    var click: Button = Button.new()
+    click.position = Vector2.ZERO
+    click.size = Vector2(145, 215)
+    click.text = ""
+    click.flat = true
+    click.focus_mode = Control.FOCUS_NONE
+    click.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+    click.pressed.connect(_select_character.bind(index))
+    card.add_child(click)
+
+    if index == active_character:
+        var active_label: Label = Label.new()
+        active_label.text = "АКТИВЕН"
+        active_label.position = Vector2(28, 8)
+        active_label.size = Vector2(90, 24)
+        active_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+        active_label.add_theme_font_size_override("font_size", 11)
+        active_label.add_theme_color_override("font_color", Color("ffe39a"))
+        active_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+        card.add_child(active_label)
+    return card
+
+func _select_character(index: int) -> void:
+    if index < 0 or index > current_chapter:
         return
-    shards -= cost
-    upgrades[index]["count"] = int(upgrades[index]["count"]) + 1
-    _recalculate_stats()
-    event_label.text = "%s улучшен до уровня %d." % [upgrades[index]["name"], upgrades[index]["count"]]
-    sfx_bank.play("buy")
-    _spawn_level_up(upgrades[index]["name"])
-    _refresh_all()
+    if index == active_character:
+        return
+    active_character = index
+    bonus_clock = minf(bonus_clock, _next_bonus_delay())
+    sfx_bank.play("open")
+    _refresh_character()
+    _rebuild_collection()
+    _rebuild_automation()
+    _refresh_live_labels()
+    _spawn_status_text("АКТИВНЫЙ ПЕРСОНАЖ • %s" % String(chapters[index]["name"]), Color("ffe2ff"))
     _save_game()
 
-func _spawn_level_up(upgrade_name: String) -> void:
-    if not is_instance_valid(fx_layer):
+func _apply_character_background(animate: bool = true) -> void:
+    if not is_instance_valid(background_layer):
         return
-    var label := Label.new()
-    label.text = "LEVEL UP  •  %s" % upgrade_name
-    label.add_theme_font_size_override("font_size", 22)
-    label.add_theme_color_override("font_color", Color("fff2a6"))
-    label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+    var chapter: Dictionary = chapters[active_character]
+    background_layer.texture = BackgroundLoader.load_texture(String(chapter["background"]))
+    var wide: bool = bool(chapter.get("wide_layout", false))
+    if is_instance_valid(main_ui_root):
+        if wide:
+            main_ui_root.position = Vector2(0.0, 106.0)
+            main_ui_root.scale = Vector2(1.0, 1152.0 / 1365.0)
+        else:
+            main_ui_root.position = Vector2.ZERO
+            main_ui_root.scale = Vector2.ONE
+    if animate:
+        background_layer.modulate.a = 0.35
+        var tween: Tween = create_tween()
+        tween.tween_property(background_layer, "modulate:a", 1.0, 0.45)
+    else:
+        background_layer.modulate.a = 1.0
+
+func _on_core_pressed() -> void:
+    var amount: float = click_power * _click_multiplier() * _all_income_multiplier() * boost_multiplier
+    var critical: bool = rng.randf() < crit_chance
+    if critical:
+        amount *= crit_multiplier * _crit_multiplier_bonus()
+        critical_clicks += 1
+        sfx_bank.play("crit")
+    else:
+        sfx_bank.play("click")
+    total_clicks += 1
+    shards += amount
+    total_shards += amount
+    _spawn_click_text(amount, critical)
+    _spawn_click_particles(critical)
+    _animate_core_press(critical)
+    _check_chapter_unlock()
+    _rebuild_automation()
+    _refresh_live_labels()
+
+func _animate_core_press(critical: bool) -> void:
+    var target: Vector2 = Vector2(1.10, 1.10) if critical else Vector2(1.055, 1.055)
+    var tween_a: Tween = create_tween()
+    tween_a.tween_property(crystal_ring_a, "scale", target, 0.07)
+    tween_a.tween_property(crystal_ring_a, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+    var tween_b: Tween = create_tween()
+    tween_b.tween_property(crystal_ring_b, "scale", target * 1.04, 0.07)
+    tween_b.tween_property(crystal_ring_b, "scale", Vector2.ONE, 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+func _core_hover_on() -> void:
+    var tween: Tween = create_tween()
+    tween.set_parallel(true)
+    tween.tween_property(crystal_ring_a, "modulate:a", 0.55, 0.18)
+    tween.tween_property(crystal_ring_b, "modulate:a", 0.42, 0.18)
+
+func _core_hover_off() -> void:
+    var tween: Tween = create_tween()
+    tween.set_parallel(true)
+    tween.tween_property(crystal_ring_a, "modulate:a", 0.25, 0.18)
+    tween.tween_property(crystal_ring_b, "modulate:a", 0.18, 0.18)
+
+func _spawn_click_text(amount: float, critical: bool) -> void:
+    var label: Label = Label.new()
+    label.text = ("КРИТ +%s" if critical else "+%s") % _compact(amount)
+    label.position = Vector2(910 + rng.randf_range(-70.0, 70.0), 570)
+    label.size = Vector2(300, 55)
+    label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    label.add_theme_font_override("font", title_font)
+    label.add_theme_font_size_override("font_size", 31 if critical else 25)
+    label.add_theme_color_override("font_color", Color("ffe9a8") if critical else Color("f0d8ff"))
+    label.add_theme_color_override("font_shadow_color", Color(0,0,0,0.9))
     label.add_theme_constant_override("shadow_offset_x", 2)
     label.add_theme_constant_override("shadow_offset_y", 2)
-    label.position = Vector2(size.x * 0.58, size.y * 0.24)
-    label.modulate.a = 0.0
     fx_layer.add_child(label)
+
     var start_pos: Vector2 = label.position
-    var tween := create_tween()
+    var tween: Tween = create_tween()
     tween.set_parallel(true)
-    tween.tween_property(label, "modulate:a", 1.0, 0.12)
-    tween.tween_property(label, "position", start_pos + Vector2(0, -24), 0.55).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-    tween.chain().tween_property(label, "modulate:a", 0.0, 0.28)
+    tween.tween_property(label, "position", start_pos + Vector2(0, -100), 0.8).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+    tween.tween_property(label, "modulate:a", 0.0, 0.8)
     tween.finished.connect(label.queue_free)
 
-func _upgrade_cost(index: int) -> float:
-    var up = upgrades[index]
-    return float(up["base"]) * pow(float(up["growth"]), int(up["count"])) * _upgrade_cost_multiplier()
-
-func _recalculate_stats() -> void:
-    click_power = 1.0
-    auto_rate = 0.0
-    for up in upgrades:
-        var contribution: float = float(up["value"]) * float(int(up["count"]))
-        if up["kind"] == "click":
-            click_power += contribution
-        elif up["kind"] == "auto":
-            auto_rate += contribution
-
-func _check_chapter_unlocks() -> void:
-    var unlocked: int = current_chapter
-    for i in range(chapters.size()):
-        if total_shards >= float(chapters[i]["need"]):
-            unlocked = i
-    if unlocked > current_chapter:
-        current_chapter = unlocked
-        active_character = unlocked
-        var task_reward: float = maxf(50.0, float(chapters[unlocked]["need"]) * 0.05) * _task_reward_multiplier()
-        shards += task_reward
-        _chapter_reveal()
-
-func _chapter_reveal() -> void:
-    var ch = chapters[current_chapter]
-    event_label.text = "ОТКРЫТА НОВАЯ ГЛАВА: %s" % ch["title"]
-    chapter_symbol.text = ch["symbol"]
-    sfx_bank.play("unlock")
-    _chapter_flash("%s  •  %s" % [ch["title"], ch["reward"]])
-    _rebuild_gallery_cards()
-    _show_reward_overlay(current_chapter)
-
-    if is_instance_valid(current_art):
-        current_art.modulate.a = 0.0
-        current_art.scale = Vector2(0.94, 0.94)
-        var art_reveal := create_tween()
-        art_reveal.set_parallel(true)
-        art_reveal.tween_property(current_art, "modulate:a", 0.96, 0.55)
-        art_reveal.tween_property(current_art, "scale", Vector2.ONE, 0.55).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-
-    var tween := create_tween()
-    chapter_label.modulate.a = 0.0
-    chapter_subtitle.modulate.a = 0.0
-    chapter_label.scale = Vector2(0.92, 0.92)
-    chapter_label.pivot_offset = chapter_label.size / 2.0
-    tween.set_parallel(true)
-    tween.tween_property(chapter_label, "modulate:a", 1.0, 0.7)
-    tween.tween_property(chapter_subtitle, "modulate:a", 1.0, 1.0)
-    tween.tween_property(chapter_label, "scale", Vector2.ONE, 0.55).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-    _save_game()
-
-func _chapter_flash(title_text: String) -> void:
-    if not is_instance_valid(fx_layer):
-        return
-
-    var flash := ColorRect.new()
-    flash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    flash.color = Color(0.70, 0.83, 1.0, 0.0)
-    flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    fx_layer.add_child(flash)
-
-    var banner := Label.new()
-    banner.text = "НОВАЯ ИЛЛЮСТРАЦИЯ\n%s" % title_text
-    banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    banner.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-    banner.set_anchors_preset(Control.PRESET_CENTER)
-    banner.position = Vector2(-330, -70)
-    banner.size = Vector2(660, 140)
-    banner.add_theme_font_size_override("font_size", 28)
-    banner.add_theme_color_override("font_color", Color("f4f7ff"))
-    banner.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
-    banner.add_theme_constant_override("shadow_offset_x", 3)
-    banner.add_theme_constant_override("shadow_offset_y", 3)
-    banner.modulate.a = 0.0
-    banner.scale = Vector2(0.88, 0.88)
-    banner.pivot_offset = banner.size / 2.0
-    fx_layer.add_child(banner)
-
-    var flash_tween := create_tween()
-    flash_tween.tween_property(flash, "color:a", 0.52, 0.10)
-    flash_tween.tween_property(flash, "color:a", 0.0, 0.55)
-    flash_tween.finished.connect(flash.queue_free)
-
-    var banner_tween := create_tween()
-    banner_tween.set_parallel(true)
-    banner_tween.tween_property(banner, "modulate:a", 1.0, 0.22)
-    banner_tween.tween_property(banner, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-    banner_tween.chain().tween_interval(0.7)
-    banner_tween.chain().tween_property(banner, "modulate:a", 0.0, 0.35)
-    banner_tween.finished.connect(banner.queue_free)
-
-    for i in range(34):
-        _spawn_reveal_spark()
-
-func _spawn_reveal_spark() -> void:
-    if not is_instance_valid(fx_layer):
-        return
-    var spark := ColorRect.new()
-    var px: float = rng.randf_range(3.0, 8.0)
-    spark.size = Vector2(px, px)
-    spark.position = Vector2(rng.randf_range(0.0, maxf(size.x, 1.0)), rng.randf_range(0.0, maxf(size.y, 1.0)))
-    spark.color = Color.from_hsv(rng.randf_range(0.53, 0.70), 0.45, 1.0, 0.9)
-    fx_layer.add_child(spark)
-    var target: Vector2 = spark.position + Vector2(rng.randf_range(-70.0, 70.0), rng.randf_range(-120.0, -35.0))
-    var duration: float = rng.randf_range(0.6, 1.2)
-    var tween := create_tween()
-    tween.set_parallel(true)
-    tween.tween_property(spark, "position", target, duration)
-    tween.tween_property(spark, "modulate:a", 0.0, duration)
-    tween.finished.connect(spark.queue_free)
-
-func _spawn_rare_bonus() -> void:
-    if not is_instance_valid(fx_layer) or is_instance_valid(rare_bonus_button):
-        return
-
-    var bonus := Button.new()
-    rare_bonus_button = bonus
-    bonus.text = "✦"
-    bonus.size = Vector2(64, 64)
-    bonus.position = Vector2(-72, rng.randf_range(120.0, maxf(160.0, size.y - 160.0)))
-    bonus.add_theme_font_size_override("font_size", 34)
-    bonus.add_theme_color_override("font_color", Color("fff2a0"))
-    bonus.add_theme_stylebox_override("normal", _round_button_style(Color("493a13"), Color("ffd85e"), 32))
-    bonus.add_theme_stylebox_override("hover", _round_button_style(Color("675019"), Color("ffe889"), 32))
-    bonus.add_theme_stylebox_override("pressed", _round_button_style(Color("2e260f"), Color("ffffff"), 32))
-    bonus.mouse_filter = Control.MOUSE_FILTER_STOP
-    bonus.pressed.connect(_collect_rare_bonus.bind(bonus))
-    fx_layer.add_child(bonus)
-
-    event_label.text = "Редкий осколок появился! Успей поймать его."
-    var target_x: float = maxf(size.x + 20.0, 1300.0)
-    var tween := create_tween()
-    tween.tween_property(bonus, "position:x", target_x, 6.0).set_trans(Tween.TRANS_LINEAR)
-    tween.finished.connect(_expire_rare_bonus.bind(bonus))
-
-func _collect_rare_bonus(button: Button) -> void:
-    if not is_instance_valid(button):
-        return
-    var reward: float = maxf(click_power * 20.0, maxf(25.0, auto_rate * 8.0)) * _all_income_multiplier()
-    var duration: float = 15.0 * _resonance_duration_multiplier()
-    shards += reward
-    total_shards += reward
-    event_label.text = "РЕЗОНАНС! Доход удвоен на %.0f секунд. +%s осколков" % [duration, _compact(reward)]
-    boost_multiplier = 2.0
-    boost_time_left = duration
-    sfx_bank.play("bonus")
-    _spawn_float_text(reward, true)
-    _spawn_click_particles(true)
-    if rare_bonus_button == button:
-        rare_bonus_button = null
-    button.queue_free()
-    _check_chapter_unlocks()
-    _refresh_all()
-
-func _expire_rare_bonus(button: Button) -> void:
-    if not is_instance_valid(button):
-        return
-    if rare_bonus_button == button:
-        rare_bonus_button = null
-    button.queue_free()
-
-func _refresh_all() -> void:
-    _refresh_topbar()
-    _refresh_chapter()
-    _refresh_chapter_progress()
-    _rebuild_upgrade_buttons()
-
-func _active_bonus_kind() -> String:
-    return String(chapters[clampi(active_character, 0, chapters.size() - 1)]["bonus_kind"])
-
-func _active_bonus_value() -> float:
-    return float(chapters[clampi(active_character, 0, chapters.size() - 1)]["bonus_value"])
-
-func _all_income_multiplier() -> float:
-    var kind: String = _active_bonus_kind()
-    if kind == "all_income":
-        return 1.0 + _active_bonus_value()
-    if kind == "perfection":
-        return 2.0
-    return 1.0
-
-func _click_income_multiplier() -> float:
-    var result: float = _all_income_multiplier()
-    if _active_bonus_kind() == "click_power":
-        result *= 1.0 + _active_bonus_value()
-    elif _active_bonus_kind() == "perfection":
-        result *= 2.0
-    return result
-
-func _auto_income_multiplier() -> float:
-    var result: float = _all_income_multiplier()
-    var kind: String = _active_bonus_kind()
-    if kind == "auto_income" or kind == "auto_efficiency":
-        result *= 1.0 + _active_bonus_value()
-    return result
-
-func _critical_power_multiplier() -> float:
-    return 1.0 + _active_bonus_value() if _active_bonus_kind() == "crit_power" else 1.0
-
-func _upgrade_cost_multiplier() -> float:
-    return 1.0 - _active_bonus_value() if _active_bonus_kind() == "upgrade_discount" else 1.0
-
-func _resonance_frequency_multiplier() -> float:
-    return 1.0 + _active_bonus_value() if _active_bonus_kind() == "resonance_frequency" else 1.0
-
-func _resonance_duration_multiplier() -> float:
-    return 1.0 + _active_bonus_value() if _active_bonus_kind() == "resonance_duration" else 1.0
-
-func _offline_income_multiplier() -> float:
-    var result: float = 1.0
-    if _active_bonus_kind() == "offline_income":
-        result *= 1.0 + _active_bonus_value()
-    elif _active_bonus_kind() == "perfection":
-        result *= 2.0
-    return result
-
-func _task_reward_multiplier() -> float:
-    return 1.0 + _active_bonus_value() if _active_bonus_kind() == "task_reward" else 1.0
-
-func _effective_multiplier() -> float:
-    return _all_income_multiplier() * boost_multiplier
-
-func _refresh_topbar() -> void:
-    shard_label.text = "Осколки: %s" % _compact(shards)
-    total_label.text = "Всего: %s" % _compact(total_shards)
-    click_label.text = "Клик: +%s" % _compact(click_power * _click_income_multiplier() * boost_multiplier)
-    var shown_auto: float = auto_rate * _auto_income_multiplier() * boost_multiplier
-    if _active_bonus_kind() == "auto_double_chance":
-        shown_auto *= 1.0 + _active_bonus_value()
-    auto_label.text = "/сек: %s" % _compact(shown_auto)
-    var active = chapters[active_character]
-    var character_text: String = "%s  •  %s" % [active["reward"], active["bonus_text"]]
-    if boost_time_left > 0.0:
-        boost_label.text = "%s  •  ✦ РЕЗОНАНС ×2  •  %.1f сек." % [character_text, boost_time_left]
-    else:
-        boost_label.text = character_text
-
-func _refresh_chapter() -> void:
-    active_character = clampi(active_character, 0, current_chapter)
-    var progress_ch = chapters[current_chapter]
-    var active_ch = chapters[active_character]
-    chapter_label.text = progress_ch["title"]
-    chapter_subtitle.text = "%s\nАктивный персонаж: %s — %s" % [progress_ch["subtitle"], active_ch["reward"], active_ch["bonus_text"]]
-    chapter_symbol.text = progress_ch["symbol"]
-    core_button.text = progress_ch["symbol"]
-    core_button.tooltip_text = "%s  •  %s" % [active_ch["reward"], active_ch["bonus_text"]]
-
-    if is_instance_valid(current_art):
-        current_art.texture = GalleryArtLoader.load_texture(String(active_ch["art"]))
-
-    if is_instance_valid(background_art):
-        var bg_texture: Texture2D = BackgroundLoader.load_texture(String(active_ch["background"]))
-        if bg_texture != null:
-            background_art.texture = bg_texture
-            background_art.modulate = Color(1.0, 1.0, 1.0, 1.0)
-        else:
-            background_art.texture = GalleryArtLoader.load_texture(String(active_ch["art"]))
-            background_art.modulate = Color(0.34, 0.37, 0.52, 0.28)
-
-    var hue: float = float(active_character) / maxf(1.0, float(chapters.size() - 1))
-    core_glow.color = Color.from_hsv(0.58 + hue * 0.18, 0.55, 1.0, 0.10)
-
-func _refresh_chapter_progress() -> void:
-    if current_chapter >= chapters.size() - 1:
-        chapter_progress.value = 100
-        chapter_need_label.text = "Все 13 отражений открыты. Финальная награда доступна."
-        return
-    var from_need: float = float(chapters[current_chapter]["need"])
-    var next_need: float = float(chapters[current_chapter + 1]["need"])
-    var span: float = maxf(1.0, next_need - from_need)
-    var pct: float = clampf((total_shards - from_need) / span * 100.0, 0.0, 100.0)
-    chapter_progress.value = pct
-    chapter_need_label.text = "До следующей главы: %s" % _compact(maxf(0.0, next_need - total_shards))
-
-func _compact(value: float) -> String:
-    var suffixes := ["", "K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No"]
-    var idx: int = 0
-    var n: float = value
-    while abs(n) >= 1000.0 and idx < suffixes.size() - 1:
-        n /= 1000.0
-        idx += 1
-    if idx == 0:
-        return str(int(round(value)))
-    if abs(n) >= 100.0:
-        return "%.0f%s" % [n, suffixes[idx]]
-    if abs(n) >= 10.0:
-        return "%.1f%s" % [n, suffixes[idx]]
-    return "%.2f%s" % [n, suffixes[idx]]
-
-func _save_game() -> void:
-    var counts := []
-    for up in upgrades:
-        counts.append(int(up["count"]))
-    var data := {
-        "shards": shards,
-        "total_shards": total_shards,
-        "current_chapter": current_chapter,
-        "active_character": active_character,
-        "upgrade_counts": counts,
-        "last_unix": int(Time.get_unix_time_from_system())
-    }
-    var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
-    if file:
-        file.store_string(JSON.stringify(data))
-
-    if is_instance_valid(yandex_sdk) and yandex_sdk.player_ready:
-        yandex_sdk.save_cloud(data)
-        yandex_sdk.submit_score(total_shards)
-
-func _load_game() -> void:
-    if not FileAccess.file_exists(SAVE_PATH):
-        last_unix = int(Time.get_unix_time_from_system())
-        return
-    var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
-    if not file:
-        return
-    var parsed = JSON.parse_string(file.get_as_text())
-    if typeof(parsed) != TYPE_DICTIONARY:
-        return
-    shards = float(parsed.get("shards", 0.0))
-    total_shards = float(parsed.get("total_shards", 0.0))
-    current_chapter = clampi(int(parsed.get("current_chapter", 0)), 0, chapters.size() - 1)
-    active_character = clampi(int(parsed.get("active_character", current_chapter)), 0, current_chapter)
-    last_unix = int(parsed.get("last_unix", Time.get_unix_time_from_system()))
-    var counts = parsed.get("upgrade_counts", [])
-    for i in range(min(counts.size(), upgrades.size())):
-        upgrades[i]["count"] = int(counts[i])
-
-func _merge_cloud_data(data: Dictionary) -> void:
-    var cloud_time: int = int(data.get("last_unix", 0))
-    if cloud_time <= last_unix:
-        return
-
-    shards = float(data.get("shards", shards))
-    total_shards = float(data.get("total_shards", total_shards))
-    current_chapter = clampi(int(data.get("current_chapter", current_chapter)), 0, chapters.size() - 1)
-    active_character = clampi(int(data.get("active_character", current_chapter)), 0, current_chapter)
-    last_unix = cloud_time
-
-    var counts = data.get("upgrade_counts", [])
-    if typeof(counts) == TYPE_ARRAY:
-        for i in range(min(counts.size(), upgrades.size())):
-            upgrades[i]["count"] = int(counts[i])
-
-    _recalculate_stats()
-    _apply_offline_progress()
-    _refresh_all()
-    offline_label.text = "Облачное сохранение Яндекс.Игр загружено."
-
-func _apply_offline_progress() -> void:
-    var now: int = int(Time.get_unix_time_from_system())
-    if last_unix <= 0 or auto_rate <= 0.0:
-        return
-    var seconds: int = clampi(now - last_unix, 0, 8 * 60 * 60)
-    if seconds <= 0:
-        return
-    var gain: float = auto_rate * float(seconds) * _auto_income_multiplier() * _offline_income_multiplier()
-    shards += gain
-    total_shards += gain
-    offline_label.text = "Пока тебя не было: +%s осколков за %d мин." % [_compact(gain), int(seconds / 60)]
-    _check_chapter_unlocks()
+func _spawn_click_particles(critical: bool) -> void:
+    var center: Vector2 = Vector2(1000, 650)
+    var count: int = 30 if critical else 15
+    for i in range(count):
+        var spark: ColorRect = ColorRect.new()
+        var px: float = rng.randf_range(3.0, 9.0)
+        spark.size = Vector2(px, px)
+        spark.position = center
+        spark.pivot_offset = spark.size / 2.0
+        spark.rotation = rng.randf_range(-PI, PI)
+        spark.color = Color.from_hsv(rng.randf_range(0.72, 0.88), 0.42, 1.0, 0.95)
+        spark.mouse_filter = Control.MOUSE_FILTER_IGNORE
+        fx_layer.add_child(spark)
+        var angle: float = rng.randf_range(0.0, TAU)
+        var dist: float = rng.randf_range(80.0, 210.0 if critical else 145.0)
