@@ -64,7 +64,7 @@ static func _load_from_atlas(art_path: String) -> Texture2D:
         return null
 
     var col: int = index % ATLAS_COLUMNS
-    var row: int = index / ATLAS_COLUMNS
+    var row: int = int(index / ATLAS_COLUMNS)
 
     var region := AtlasTexture.new()
     region.atlas = atlas
