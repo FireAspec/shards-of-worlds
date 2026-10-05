@@ -8,6 +8,7 @@ var player_ready: bool = false
 var cloud_requested: bool = false
 var cloud_consumed: bool = false
 var leaderboard_requested: bool = false
+var game_ready_sent: bool = false
 
 func _ready() -> void:
     enabled = OS.has_feature("web")
@@ -66,6 +67,24 @@ func _inject_sdk() -> void:
     document.head.appendChild(script);
 })();
 """, true)
+
+func mark_game_ready() -> void:
+    if not ready or game_ready_sent:
+        return
+    JavaScriptBridge.eval("""
+try {
+    window.__ysdk.features.LoadingAPI?.ready();
+    window.__yg_game_ready = true;
+} catch (e) {
+    window.__yg_error = String(e);
+}
+""", true)
+    game_ready_sent = true
+
+func is_ad_open() -> bool:
+    if not enabled:
+        return false
+    return bool(JavaScriptBridge.eval("Boolean(window.__yg_ad_open)", true))
 
 func is_authorized() -> bool:
     if not player_ready:
@@ -192,10 +211,19 @@ func show_rewarded_ad() -> void:
 try {
     window.__ysdk.adv.showRewardedVideo({
         callbacks: {
-            onOpen: () => window.__yg_rewarded = false,
+            onOpen: () => {
+                window.__yg_rewarded = false;
+                window.__yg_ad_open = true;
+            },
             onRewarded: () => window.__yg_rewarded = true,
-            onClose: () => window.__yg_rewarded_closed = true,
-            onError: e => window.__yg_error = String(e)
+            onClose: () => {
+                window.__yg_rewarded_closed = true;
+                window.__yg_ad_open = false;
+            },
+            onError: e => {
+                window.__yg_ad_open = false;
+                window.__yg_error = String(e);
+            }
         }
     });
 } catch (e) {
