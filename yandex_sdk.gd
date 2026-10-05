@@ -67,6 +67,26 @@ func _inject_sdk() -> void:
 })();
 """, true)
 
+func is_authorized() -> bool:
+    if not player_ready:
+        return false
+    return bool(JavaScriptBridge.eval("Boolean(window.__yg_player && window.__yg_player.isAuthorized && window.__yg_player.isAuthorized())", true))
+
+func open_auth_dialog() -> void:
+    if not ready:
+        return
+    JavaScriptBridge.eval("""
+(async () => {
+    try {
+        await window.__ysdk.auth.openAuthDialog();
+        window.__yg_player = await window.__ysdk.getPlayer();
+        window.__yg_player_ready = true;
+    } catch (e) {
+        window.__yg_error = String(e);
+    }
+})();
+""", true)
+
 func request_cloud_data() -> void:
     if not player_ready or cloud_requested:
         return
