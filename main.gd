@@ -71,7 +71,10 @@ var fx_layer: Control
 var crystal_ring_a: Panel
 var crystal_ring_b: Panel
 var click_hotspot: Button
+var click_panel: Panel
 var offline_label: Label
+var character_transition_tween: Tween
+var core_hovered: bool = false
 
 var overlay_root: ColorRect
 var overlay_title: Label
@@ -265,6 +268,7 @@ func _build_screen() -> void:
     background_layer.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
     background_layer.stretch_mode = TextureRect.STRETCH_SCALE
     background_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    background_layer.pivot_offset = Vector2(1024, 682.5)
     add_child(background_layer)
 
     main_ui_root = Control.new()
@@ -553,9 +557,10 @@ func _build_click_area() -> void:
     crystal_ring_b.add_theme_stylebox_override("panel", _ring_style(Color(0.92,0.55,1.0,0.75), 3))
     main_ui_root.add_child(crystal_ring_b)
 
-    var click_panel: Panel = Panel.new()
+    click_panel = Panel.new()
     click_panel.position = Vector2(785, 790)
     click_panel.size = Vector2(390, 135)
+    click_panel.pivot_offset = click_panel.size / 2.0
     click_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
     click_panel.add_theme_stylebox_override("panel", _click_style())
     main_ui_root.add_child(click_panel)
@@ -805,7 +810,7 @@ func _refresh_live_labels() -> void:
         resonance_title.text = "Резонанс"
         resonance_time_label.text = "Поймай редкий осколок"
 
-func _refresh_character() -> void:
+func _refresh_character(apply_background: bool = true) -> void:
     active_character = clampi(active_character, 0, current_chapter)
     var chapter: Dictionary = chapters[active_character]
     character_portrait.texture = load(String(chapter["art"]))
@@ -814,7 +819,8 @@ func _refresh_character() -> void:
     character_bonus_label.text = String(chapter["bonus_text"])
     character_quote_label.text = String(chapter["quote"])
     collection_title.text = "✧  Моя коллекция  (%d/13)" % (current_chapter + 1)
-    _apply_character_background(false)
+    if apply_background:
+        _apply_character_background(false)
 
 func _rebuild_automation() -> void:
     if not is_instance_valid(automation_box):
@@ -900,7 +906,13 @@ func _make_upgrade_row(index: int) -> Control:
     buy.add_theme_color_override("font_color", Color("fff3ff"))
     buy.add_theme_stylebox_override("normal", _button_style(Color(0.14,0.07,0.24,0.98), Color(0.67,0.42,0.92,0.84), 8))
     buy.add_theme_stylebox_override("hover", _button_style(Color(0.24,0.08,0.36,0.99), Color(0.96,0.64,1.0,1.0), 8))
+    buy.add_theme_stylebox_override("pressed", _button_style(Color(0.34,0.11,0.48,1.0), Color(1.0,0.78,1.0,1.0), 8))
     buy.add_theme_stylebox_override("disabled", _button_style(Color(0.055,0.065,0.095,0.95), Color(0.20,0.22,0.31,0.7), 8))
+    buy.pivot_offset = buy.size / 2.0
+    buy.mouse_entered.connect(_interactive_hover.bind(buy, true, 1.045))
+    buy.mouse_exited.connect(_interactive_hover.bind(buy, false, 1.045))
+    buy.button_down.connect(_interactive_press.bind(buy, true, 0.93, 1.045))
+    buy.button_up.connect(_interactive_press.bind(buy, false, 0.93, 1.045))
     buy.pressed.connect(_buy_upgrade.bind(index))
     row.add_child(buy)
     upgrade_buy_buttons[index] = buy
@@ -919,6 +931,7 @@ func _make_collection_card(index: int) -> Control:
     var chapter: Dictionary = chapters[index]
     var card: Panel = Panel.new()
     card.custom_minimum_size = Vector2(145, 215)
+    card.pivot_offset = Vector2(72.5, 107.5)
     var border_color: Color = Color("ffd36f") if index == active_character else Color(0.66,0.28,0.74,0.86)
     card.add_theme_stylebox_override("panel", _glass_style(Color(0.025,0.035,0.07,0.98), border_color, 10, 8 if index == active_character else 6))
 
@@ -928,6 +941,8 @@ func _make_collection_card(index: int) -> Control:
     art.texture = load(String(chapter["art"]))
     art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
     art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+    art.pivot_offset = art.size / 2.0
+    art.mouse_filter = Control.MOUSE_FILTER_IGNORE
     card.add_child(art)
 
     var name_label: Label = Label.new()
@@ -949,6 +964,10 @@ func _make_collection_card(index: int) -> Control:
     click.flat = true
     click.focus_mode = Control.FOCUS_NONE
     click.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+    click.mouse_entered.connect(_collection_card_hover.bind(card, art, true))
+    click.mouse_exited.connect(_collection_card_hover.bind(card, art, false))
+    click.button_down.connect(_collection_card_press.bind(card, art, true))
+    click.button_up.connect(_collection_card_press.bind(card, art, false))
     click.pressed.connect(_select_character.bind(index))
     card.add_child(click)
 
@@ -969,15 +988,68 @@ func _select_character(index: int) -> void:
         return
     if index == active_character:
         return
+
     active_character = index
     bonus_clock = minf(bonus_clock, _next_bonus_delay())
-    sfx_bank.play("open")
-    _refresh_character()
-    _rebuild_collection()
+    sfx_bank.play("select")
+    _close_overlay()
+    _animate_character_transition()
     _rebuild_automation()
     _refresh_live_labels()
-    _spawn_status_text("АКТИВНЫЙ ПЕРСОНАЖ • %s" % String(chapters[index]["name"]), Color("ffe2ff"))
     _save_game()
+
+func _animate_character_transition() -> void:
+    if character_transition_tween != null and character_transition_tween.is_valid():
+        character_transition_tween.kill()
+
+    character_transition_tween = create_tween()
+    character_transition_tween.set_trans(Tween.TRANS_QUAD)
+    character_transition_tween.set_ease(Tween.EASE_OUT)
+
+    character_transition_tween.tween_property(background_layer, "modulate:a", 0.08, 0.16)
+    character_transition_tween.parallel().tween_property(character_portrait, "modulate:a", 0.0, 0.14)
+    character_transition_tween.parallel().tween_property(character_name_label, "modulate:a", 0.0, 0.14)
+    character_transition_tween.parallel().tween_property(character_rarity_label, "modulate:a", 0.0, 0.14)
+    character_transition_tween.parallel().tween_property(character_bonus_label, "modulate:a", 0.0, 0.14)
+    character_transition_tween.parallel().tween_property(character_quote_label, "modulate:a", 0.0, 0.14)
+
+    character_transition_tween.tween_callback(_commit_character_transition)
+
+    character_transition_tween.tween_property(background_layer, "modulate:a", 1.0, 0.34)
+    character_transition_tween.parallel().tween_property(background_layer, "scale", Vector2.ONE, 0.42).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+    character_transition_tween.parallel().tween_property(character_portrait, "modulate:a", 1.0, 0.26)
+    character_transition_tween.parallel().tween_property(character_portrait, "scale", Vector2.ONE, 0.32).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+    character_transition_tween.parallel().tween_property(character_name_label, "modulate:a", 1.0, 0.24)
+    character_transition_tween.parallel().tween_property(character_rarity_label, "modulate:a", 1.0, 0.26)
+    character_transition_tween.parallel().tween_property(character_bonus_label, "modulate:a", 1.0, 0.28)
+    character_transition_tween.parallel().tween_property(character_quote_label, "modulate:a", 1.0, 0.30)
+    character_transition_tween.tween_callback(_finish_character_transition)
+
+func _commit_character_transition() -> void:
+    _refresh_character(false)
+    _apply_character_background(false)
+    _rebuild_collection()
+
+    background_layer.modulate.a = 0.08
+    background_layer.scale = Vector2(1.025, 1.025)
+    character_portrait.pivot_offset = character_portrait.size / 2.0
+    character_portrait.modulate.a = 0.0
+    character_portrait.scale = Vector2(1.075, 1.075)
+    character_name_label.modulate.a = 0.0
+    character_rarity_label.modulate.a = 0.0
+    character_bonus_label.modulate.a = 0.0
+    character_quote_label.modulate.a = 0.0
+
+func _finish_character_transition() -> void:
+    background_layer.modulate.a = 1.0
+    background_layer.scale = Vector2.ONE
+    character_portrait.modulate.a = 1.0
+    character_portrait.scale = Vector2.ONE
+    character_name_label.modulate.a = 1.0
+    character_rarity_label.modulate.a = 1.0
+    character_bonus_label.modulate.a = 1.0
+    character_quote_label.modulate.a = 1.0
+    _spawn_status_text("АКТИВНЫЙ ПЕРСОНАЖ • %s" % String(chapters[active_character]["name"]), Color("ffe2ff"))
 
 func _apply_character_background(animate: bool = true) -> void:
     if not is_instance_valid(background_layer):
@@ -1019,21 +1091,65 @@ func _on_core_pressed() -> void:
     _refresh_live_labels()
 
 func _animate_core_press(critical: bool) -> void:
-    var target: Vector2 = Vector2(1.10, 1.10) if critical else Vector2(1.055, 1.055)
+    var target: Vector2 = Vector2(1.14, 1.14) if critical else Vector2(1.075, 1.075)
+
     var tween_a: Tween = create_tween()
-    tween_a.tween_property(crystal_ring_a, "scale", target, 0.07)
-    tween_a.tween_property(crystal_ring_a, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+    tween_a.tween_property(crystal_ring_a, "scale", target, 0.055)
+    tween_a.parallel().tween_property(crystal_ring_a, "modulate:a", 0.72 if critical else 0.50, 0.055)
+    tween_a.tween_property(crystal_ring_a, "scale", Vector2.ONE, 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+    tween_a.parallel().tween_property(crystal_ring_a, "modulate:a", 0.55 if core_hovered else 0.25, 0.24)
+
     var tween_b: Tween = create_tween()
-    tween_b.tween_property(crystal_ring_b, "scale", target * 1.04, 0.07)
-    tween_b.tween_property(crystal_ring_b, "scale", Vector2.ONE, 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+    tween_b.tween_property(crystal_ring_b, "scale", target * 1.05, 0.055)
+    tween_b.parallel().tween_property(crystal_ring_b, "modulate:a", 0.80 if critical else 0.58, 0.055)
+    tween_b.tween_property(crystal_ring_b, "scale", Vector2.ONE, 0.27).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+    tween_b.parallel().tween_property(crystal_ring_b, "modulate:a", 0.42 if core_hovered else 0.18, 0.27)
+
+    if is_instance_valid(click_panel):
+        var panel_tween: Tween = create_tween()
+        panel_tween.tween_property(click_panel, "scale", Vector2(0.955, 0.955), 0.045)
+        panel_tween.tween_property(click_panel, "scale", Vector2(1.035, 1.035) if critical else Vector2(1.018, 1.018), 0.09).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+        panel_tween.tween_property(click_panel, "scale", Vector2.ONE, 0.13)
+
+        if critical:
+            var base_position: Vector2 = click_panel.position
+            var shake: Tween = create_tween()
+            shake.tween_property(click_panel, "position", base_position + Vector2(-7, 1), 0.035)
+            shake.tween_property(click_panel, "position", base_position + Vector2(6, -1), 0.035)
+            shake.tween_property(click_panel, "position", base_position, 0.05)
+
+    _spawn_core_ripple(critical)
+
+func _spawn_core_ripple(critical: bool) -> void:
+    if not is_instance_valid(fx_layer):
+        return
+
+    var diameter: float = 150.0 if critical else 112.0
+    var ring: Panel = Panel.new()
+    ring.size = Vector2(diameter, diameter)
+    ring.position = Vector2(1000, 650) - ring.size / 2.0
+    ring.pivot_offset = ring.size / 2.0
+    ring.scale = Vector2(0.72, 0.72)
+    ring.modulate.a = 0.92 if critical else 0.62
+    ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    ring.add_theme_stylebox_override("panel", _ring_style(Color("ffe39a") if critical else Color("cc8cff"), 4 if critical else 3))
+    fx_layer.add_child(ring)
+
+    var ripple: Tween = create_tween()
+    ripple.set_parallel(true)
+    ripple.tween_property(ring, "scale", Vector2(3.0, 3.0) if critical else Vector2(2.35, 2.35), 0.34 if critical else 0.28).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+    ripple.tween_property(ring, "modulate:a", 0.0, 0.34 if critical else 0.28)
+    ripple.finished.connect(ring.queue_free)
 
 func _core_hover_on() -> void:
+    core_hovered = true
     var tween: Tween = create_tween()
     tween.set_parallel(true)
     tween.tween_property(crystal_ring_a, "modulate:a", 0.55, 0.18)
     tween.tween_property(crystal_ring_b, "modulate:a", 0.42, 0.18)
 
 func _core_hover_off() -> void:
+    core_hovered = false
     var tween: Tween = create_tween()
     tween.set_parallel(true)
     tween.tween_property(crystal_ring_a, "modulate:a", 0.25, 0.18)
@@ -1090,6 +1206,57 @@ func _spawn_click_particles(critical: bool) -> void:
 # -----------------------------------------------------------------------------
 # Runtime helpers and gameplay systems
 # -----------------------------------------------------------------------------
+
+func _collection_card_hover(card: Control, art: Control, hovered: bool) -> void:
+    if not is_instance_valid(card) or not is_instance_valid(art):
+        return
+    card.set_meta("hovered", hovered)
+    card.z_index = 12 if hovered else 0
+    _animate_control_scale(card, Vector2(1.028, 1.028) if hovered else Vector2.ONE, 0.16)
+    _animate_control_scale(art, Vector2(1.065, 1.065) if hovered else Vector2.ONE, 0.18)
+
+func _collection_card_press(card: Control, art: Control, pressed: bool) -> void:
+    if not is_instance_valid(card) or not is_instance_valid(art):
+        return
+    if pressed:
+        _animate_control_scale(card, Vector2(0.975, 0.975), 0.055)
+        _animate_control_scale(art, Vector2(1.025, 1.025), 0.055)
+    else:
+        var hovered: bool = bool(card.get_meta("hovered", false))
+        _animate_control_scale(card, Vector2(1.028, 1.028) if hovered else Vector2.ONE, 0.12)
+        _animate_control_scale(art, Vector2(1.065, 1.065) if hovered else Vector2.ONE, 0.14)
+
+func _interactive_hover(control: Control, hovered: bool, hover_scale: float) -> void:
+    if not is_instance_valid(control):
+        return
+    control.set_meta("hovered", hovered)
+    if bool(control.get_meta("pressed", false)):
+        return
+    _animate_control_scale(control, Vector2.ONE * (hover_scale if hovered else 1.0), 0.12)
+
+func _interactive_press(control: Control, pressed: bool, press_scale: float, hover_scale: float) -> void:
+    if not is_instance_valid(control):
+        return
+    control.set_meta("pressed", pressed)
+    if pressed:
+        _animate_control_scale(control, Vector2.ONE * press_scale, 0.045)
+    else:
+        var hovered: bool = bool(control.get_meta("hovered", false))
+        _animate_control_scale(control, Vector2.ONE * (hover_scale if hovered else 1.0), 0.11)
+
+func _animate_control_scale(control: Control, target_scale: Vector2, duration: float) -> void:
+    if not is_instance_valid(control):
+        return
+
+    var previous: Variant = control.get_meta("motion_tween", null)
+    if previous is Tween:
+        var old_tween: Tween = previous
+        if old_tween.is_valid():
+            old_tween.kill()
+
+    var tween: Tween = create_tween()
+    control.set_meta("motion_tween", tween)
+    tween.tween_property(control, "scale", target_scale, duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
 func _active_bonus_kind() -> String:
     return String(chapters[clampi(active_character, 0, chapters.size() - 1)]["bonus_kind"])
