@@ -94,6 +94,8 @@ func is_authorized() -> bool:
 func open_auth_dialog() -> void:
     if not ready:
         return
+    cloud_requested = false
+    cloud_consumed = false
     JavaScriptBridge.eval("""
 (async () => {
     try {
@@ -191,6 +193,12 @@ func request_leaderboard() -> void:
     }
 })();
 """ % LEADERBOARD_NAME, true)
+
+func has_leaderboard_payload() -> bool:
+    if not enabled:
+        return false
+    var payload = JavaScriptBridge.eval("window.__yg_lb_payload || ''", true)
+    return typeof(payload) == TYPE_STRING and not String(payload).is_empty()
 
 func consume_leaderboard() -> Array:
     if not enabled:
