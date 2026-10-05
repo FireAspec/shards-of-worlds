@@ -19,5 +19,4 @@ static func load_texture(path: String) -> Texture2D:
     var error: Error = image.load_webp_from_buffer(bytes)
     if error != OK:
         return null
-
     return ImageTexture.create_from_image(image)
