@@ -2,11 +2,13 @@ extends Control
 
 const SAVE_PATH: String = "user://shards_worlds_save_v3.json"
 const AUTOSAVE_INTERVAL: float = 5.0
+const CLOUD_SYNC_INTERVAL: float = 20.0
 const BONUS_MIN_TIME: float = 20.0
 const BONUS_MAX_TIME: float = 34.0
 const SfxBank = preload("res://sfx_bank.gd")
 const MusicBank = preload("res://music_bank.gd")
 const BackgroundLoader = preload("res://background_loader.gd")
+const YandexSdk = preload("res://yandex_sdk.gd")
 
 var shards: float = 0.0
 var total_shards: float = 0.0
@@ -33,6 +35,13 @@ var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var sfx_bank: Node
 var music_bank: Node
 var rare_bonus_button: Button
+var yandex_sdk: Node
+var cloud_merge_done: bool = false
+var cloud_sync_clock: float = 0.0
+var app_has_focus: bool = true
+var audio_is_muted: bool = false
+var user_sound_enabled: bool = true
+var overlay_mode: String = ""
 
 var ui_font: SystemFont
 var title_font: SystemFont
@@ -68,6 +77,7 @@ var overlay_root: ColorRect
 var overlay_title: Label
 var overlay_content: VBoxContainer
 var overlay_close: Button
+var leaderboard_status: Label
 
 var reward_overlay: ColorRect
 var reward_card: Panel
@@ -112,14 +122,17 @@ func _ready() -> void:
     _make_fonts()
     sfx_bank = SfxBank.new()
     add_child(sfx_bank)
-    music_bank = MusicBank.new()
-    add_child(music_bank)
+    yandex_sdk = YandexSdk.new()
+    add_child(yandex_sdk)
     _build_screen()
     _build_generic_overlay()
     _build_reward_overlay()
     _load_game()
     _recalculate_stats()
     _apply_offline_progress()
+    _update_audio_mute()
+    music_bank = MusicBank.new()
+    add_child(music_bank)
     _refresh_all()
     _start_ambient_animation()
 
@@ -160,12 +173,76 @@ func _process(delta: float) -> void:
         autosave_clock = 0.0
         _save_game()
 
+    cloud_sync_clock += delta
+    if cloud_sync_clock >= CLOUD_SYNC_INTERVAL:
+        cloud_sync_clock = 0.0
+        _sync_cloud()
+
+    _process_yandex()
     _refresh_live_labels()
 
 func _notification(what: int) -> void:
     if what == NOTIFICATION_WM_CLOSE_REQUEST:
         _save_game()
+        _sync_cloud()
         get_tree().quit()
+    elif what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+        app_has_focus = false
+        _update_audio_mute()
+    elif what == NOTIFICATION_APPLICATION_FOCUS_IN:
+        app_has_focus = true
+        _update_audio_mute()
+
+func _process_yandex() -> void:
+    if not is_instance_valid(yandex_sdk):
+        return
+
+    if yandex_sdk.ready and not yandex_sdk.game_ready_sent:
+        yandex_sdk.mark_game_ready()
+
+    if yandex_sdk.player_ready and not yandex_sdk.cloud_requested:
+        yandex_sdk.request_cloud_data()
+
+    if not cloud_merge_done:
+        var cloud_data: Dictionary = yandex_sdk.consume_cloud_data()
+        if not cloud_data.is_empty():
+            _merge_cloud_data(cloud_data)
+        if yandex_sdk.cloud_consumed:
+            cloud_merge_done = true
+
+    if yandex_sdk.consume_rewarded():
+        boost_multiplier = 2.0
+        boost_time_left = maxf(boost_time_left, 60.0)
+        sfx_bank.play("bonus")
+        _spawn_status_text("НАГРАДА ЗА РЕКЛАМУ • РЕЗОНАНС ×2 НА 60 СЕКУНД", Color("ffd7ff"))
+
+    if overlay_mode == "leaderboard" and yandex_sdk.has_leaderboard_payload():
+        _render_leaderboard(yandex_sdk.consume_leaderboard())
+
+    _update_audio_mute()
+
+func _update_audio_mute() -> void:
+    var ad_open: bool = false
+    if is_instance_valid(yandex_sdk):
+        ad_open = yandex_sdk.is_ad_open()
+
+    var should_mute: bool = not user_sound_enabled or not app_has_focus or ad_open
+    if should_mute == audio_is_muted:
+        return
+
+    audio_is_muted = should_mute
+    var master_index: int = AudioServer.get_bus_index("Master")
+    if master_index >= 0:
+        AudioServer.set_bus_mute(master_index, should_mute)
+
+func _sync_cloud() -> void:
+    if not is_instance_valid(yandex_sdk) or not yandex_sdk.player_ready:
+        return
+    _save_game()
+    var data: Dictionary = _build_save_data()
+    yandex_sdk.save_cloud(data)
+    if yandex_sdk.is_authorized():
+        yandex_sdk.submit_score(total_shards)
 
 func _unhandled_key_input(event: InputEvent) -> void:
     if not OS.is_debug_build():
@@ -998,6 +1075,17 @@ func _spawn_click_particles(critical: bool) -> void:
         fx_layer.add_child(spark)
         var angle: float = rng.randf_range(0.0, TAU)
         var dist: float = rng.randf_range(80.0, 210.0 if critical else 145.0)
+        var target: Vector2 = center + Vector2(cos(angle), sin(angle)) * dist
+        var lifetime: float = rng.randf_range(0.32, 0.58 if critical else 0.46)
+        var end_scale: float = rng.randf_range(0.25, 0.65)
+
+        var tween: Tween = create_tween()
+        tween.set_parallel(true)
+        tween.tween_property(spark, "position", target, lifetime).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+        tween.tween_property(spark, "rotation", spark.rotation + rng.randf_range(-2.8, 2.8), lifetime)
+        tween.tween_property(spark, "modulate:a", 0.0, lifetime)
+        tween.tween_property(spark, "scale", Vector2.ONE * end_scale, lifetime)
+        tween.finished.connect(spark.queue_free)
 
 # -----------------------------------------------------------------------------
 # Runtime helpers and gameplay systems
@@ -1265,12 +1353,16 @@ func _start_ambient_animation() -> void:
         tween_b.tween_property(crystal_ring_b, "rotation", -TAU, 13.0).from(0.0).set_trans(Tween.TRANS_LINEAR)
 
 func _clear_overlay_content() -> void:
+    overlay_mode = ""
+    leaderboard_status = null
     if not is_instance_valid(overlay_content):
         return
     for child in overlay_content.get_children():
         child.queue_free()
 
 func _close_overlay() -> void:
+    overlay_mode = ""
+    leaderboard_status = null
     if is_instance_valid(overlay_root):
         overlay_root.visible = false
 
@@ -1343,26 +1435,139 @@ func _open_stats() -> void:
     overlay_content.add_child(_small_text("Поймано резонансов: %d" % caught_bonuses))
     overlay_content.add_child(_small_text("Открыто персонажей: %d / 13" % (current_chapter + 1)))
     overlay_content.add_child(_small_text("Время текущей сессии: %d мин." % int(session_time / 60.0)))
+    if OS.has_feature("web"):
+        overlay_content.add_child(_make_overlay_button("Рейтинг Яндекс.Игр", _open_leaderboard))
     overlay_root.visible = true
+
+func _open_leaderboard() -> void:
+    _clear_overlay_content()
+    overlay_mode = "leaderboard"
+    overlay_title.text = "Рейтинг восстановителей"
+    leaderboard_status = _small_text("Подключаемся к Яндекс.Играм...")
+    leaderboard_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    overlay_content.add_child(leaderboard_status)
+    overlay_root.visible = true
+
+    if not is_instance_valid(yandex_sdk) or not yandex_sdk.enabled:
+        leaderboard_status.text = "Таблица лидеров доступна в Web-сборке на Яндекс.Играх."
+        return
+    if not yandex_sdk.ready:
+        leaderboard_status.text = "SDK Яндекс.Игр ещё загружается. Попробуй открыть рейтинг через несколько секунд."
+        return
+
+    leaderboard_status.text = "Загружаем лучшие результаты..."
+    yandex_sdk.request_leaderboard()
+
+func _render_leaderboard(entries: Array) -> void:
+    if overlay_mode != "leaderboard" or not is_instance_valid(overlay_content):
+        return
+
+    for child in overlay_content.get_children():
+        child.queue_free()
+    leaderboard_status = null
+
+    if entries.is_empty():
+        overlay_content.add_child(_small_text("В таблице лидеров пока нет результатов."))
+        return
+
+    overlay_content.add_child(_small_text("Лучшие восстановители по общему числу собранных осколков."))
+    for raw_entry in entries:
+        if typeof(raw_entry) != TYPE_DICTIONARY:
+            continue
+
+        var row: HBoxContainer = HBoxContainer.new()
+        row.custom_minimum_size = Vector2(0, 48)
+        row.add_theme_constant_override("separation", 18)
+
+        var rank: Label = Label.new()
+        rank.text = "#%d" % (int(raw_entry.get("rank", 0)) + 1)
+        rank.custom_minimum_size = Vector2(90, 0)
+        rank.add_theme_font_override("font", ui_font)
+        rank.add_theme_font_size_override("font_size", 20)
+        rank.add_theme_color_override("font_color", Color("d8c9ff"))
+        row.add_child(rank)
+
+        var player_name: Label = Label.new()
+        player_name.text = String(raw_entry.get("name", "Игрок"))
+        player_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        player_name.add_theme_font_override("font", ui_font)
+        player_name.add_theme_font_size_override("font_size", 20)
+        player_name.add_theme_color_override("font_color", Color("f5efff"))
+        row.add_child(player_name)
+
+        var score: Label = Label.new()
+        score.text = _compact(float(raw_entry.get("score", 0)))
+        score.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+        score.custom_minimum_size = Vector2(220, 0)
+        score.add_theme_font_override("font", title_font)
+        score.add_theme_font_size_override("font_size", 21)
+        score.add_theme_color_override("font_color", Color("ffd978"))
+        row.add_child(score)
+
+        overlay_content.add_child(row)
+
+func _on_yandex_auth_pressed() -> void:
+    if not is_instance_valid(yandex_sdk) or not yandex_sdk.ready:
+        _spawn_status_text("ЯНДЕКС.ИГРЫ ЕЩЁ ПОДКЛЮЧАЮТСЯ", Color("e8c8ff"))
+        return
+    cloud_merge_done = false
+    _spawn_status_text("ОТКРЫВАЕМ ВХОД В ЯНДЕКС", Color("e8c8ff"))
+    yandex_sdk.open_auth_dialog()
+
+func _on_rewarded_ad_pressed() -> void:
+    if not is_instance_valid(yandex_sdk) or not yandex_sdk.ready:
+        _spawn_status_text("РЕКЛАМА ПОКА НЕДОСТУПНА", Color("ffb6c8"))
+        return
+    _close_overlay()
+    _spawn_status_text("ОТКРЫВАЕМ НАГРАДНУЮ РЕКЛАМУ", Color("e8c8ff"))
+    yandex_sdk.show_rewarded_ad()
 
 func _open_settings() -> void:
     _clear_overlay_content()
     overlay_title.text = "Настройки"
     var sound_toggle: CheckButton = CheckButton.new()
     sound_toggle.text = "Звук"
-    sound_toggle.button_pressed = not AudioServer.is_bus_mute(AudioServer.get_bus_index("Master"))
+    sound_toggle.button_pressed = user_sound_enabled
     sound_toggle.add_theme_font_override("font", ui_font)
     sound_toggle.add_theme_font_size_override("font_size", 24)
     sound_toggle.toggled.connect(_set_sound_enabled)
     overlay_content.add_child(sound_toggle)
     overlay_content.add_child(_small_text("Прогресс сохраняется автоматически каждые 5 секунд."))
     overlay_content.add_child(_small_text("Выбранный персонаж сохраняется отдельно от прогресса открытия."))
+
+    if OS.has_feature("web"):
+        overlay_content.add_child(_small_text("Яндекс.Игры"))
+        var platform_status: String = "Подключение к SDK..."
+        if is_instance_valid(yandex_sdk) and yandex_sdk.ready:
+            platform_status = "Подключено. Облачное сохранение активно."
+            if yandex_sdk.is_authorized():
+                platform_status += " Вход выполнен."
+            else:
+                platform_status += " Вход нужен для таблицы лидеров и переноса прогресса между устройствами."
+        overlay_content.add_child(_small_text(platform_status))
+
+        if not is_instance_valid(yandex_sdk) or not yandex_sdk.is_authorized():
+            overlay_content.add_child(_make_overlay_button("Войти в Яндекс", _on_yandex_auth_pressed))
+        overlay_content.add_child(_make_overlay_button("Рейтинг Яндекс.Игр", _open_leaderboard))
+        overlay_content.add_child(_make_overlay_button("Резонанс ×2 за рекламу", _on_rewarded_ad_pressed))
+
     overlay_root.visible = true
 
 func _set_sound_enabled(enabled: bool) -> void:
-    var index: int = AudioServer.get_bus_index("Master")
-    if index >= 0:
-        AudioServer.set_bus_mute(index, not enabled)
+    user_sound_enabled = enabled
+    _update_audio_mute()
+    _save_game()
+
+func _make_overlay_button(text_value: String, callback: Callable) -> Button:
+    var button: Button = Button.new()
+    button.text = text_value
+    button.custom_minimum_size = Vector2(0, 58)
+    button.add_theme_font_override("font", ui_font)
+    button.add_theme_font_size_override("font_size", 20)
+    button.add_theme_stylebox_override("normal", _button_style(Color(0.08,0.05,0.16,0.96), Color(0.65,0.46,0.85,0.85), 16))
+    button.add_theme_stylebox_override("hover", _button_style(Color(0.17,0.06,0.26,0.98), Color(0.94,0.59,1.0,1.0), 16))
+    button.pressed.connect(callback)
+    return button
 
 func _small_text(value: String) -> Label:
     var label: Label = Label.new()
@@ -1461,12 +1666,11 @@ func _compact(value: float) -> String:
         return "%.1f%s" % [n, suffixes[idx]]
     return "%.2f%s" % [n, suffixes[idx]]
 
-func _save_game() -> void:
+func _build_save_data() -> Dictionary:
     var counts: Array[int] = []
     for up in upgrades:
         counts.append(int(up["count"]))
-    last_unix = int(Time.get_unix_time_from_system())
-    var data: Dictionary = {
+    return {
         "shards": shards,
         "total_shards": total_shards,
         "current_chapter": current_chapter,
@@ -1475,8 +1679,13 @@ func _save_game() -> void:
         "last_unix": last_unix,
         "total_clicks": total_clicks,
         "critical_clicks": critical_clicks,
-        "caught_bonuses": caught_bonuses
+        "caught_bonuses": caught_bonuses,
+        "sound_enabled": user_sound_enabled
     }
+
+func _save_game() -> void:
+    last_unix = int(Time.get_unix_time_from_system())
+    var data: Dictionary = _build_save_data()
     var file: FileAccess = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
     if file != null:
         file.store_string(JSON.stringify(data))
@@ -1501,12 +1710,41 @@ func _load_game() -> void:
     total_clicks = int(data.get("total_clicks", 0))
     critical_clicks = int(data.get("critical_clicks", 0))
     caught_bonuses = int(data.get("caught_bonuses", 0))
+    user_sound_enabled = bool(data.get("sound_enabled", true))
 
     var counts: Variant = data.get("upgrade_counts", [])
     if counts is Array:
         var count_array: Array = counts
         for i in range(mini(count_array.size(), upgrades.size())):
             upgrades[i]["count"] = int(count_array[i])
+
+func _merge_cloud_data(data: Dictionary) -> void:
+    var cloud_time: int = int(data.get("last_unix", 0))
+    if cloud_time <= last_unix:
+        return
+
+    shards = float(data.get("shards", shards))
+    total_shards = float(data.get("total_shards", total_shards))
+    current_chapter = clampi(int(data.get("current_chapter", current_chapter)), 0, chapters.size() - 1)
+    active_character = clampi(int(data.get("active_character", current_chapter)), 0, current_chapter)
+    last_unix = cloud_time
+    total_clicks = int(data.get("total_clicks", total_clicks))
+    critical_clicks = int(data.get("critical_clicks", critical_clicks))
+    caught_bonuses = int(data.get("caught_bonuses", caught_bonuses))
+    user_sound_enabled = bool(data.get("sound_enabled", user_sound_enabled))
+
+    var counts: Variant = data.get("upgrade_counts", [])
+    if counts is Array:
+        var count_array: Array = counts
+        for i in range(mini(count_array.size(), upgrades.size())):
+            upgrades[i]["count"] = int(count_array[i])
+
+    _recalculate_stats()
+    _apply_offline_progress()
+    _update_audio_mute()
+    _refresh_all()
+    _save_game()
+    offline_label.text = "Облачное сохранение Яндекс.Игр загружено."
 
 func _apply_offline_progress() -> void:
     var now: int = int(Time.get_unix_time_from_system())
