@@ -93,6 +93,8 @@ var rewarded_button: Button
 var leaderboard_overlay: ColorRect
 var leaderboard_list: VBoxContainer
 var leaderboard_status: Label
+var auth_button: Button
+var auth_dialog: ConfirmationDialog
 
 func _ready() -> void:
     rng.randomize()
@@ -148,6 +150,9 @@ func _process(delta: float) -> void:
         if is_instance_valid(leaderboard_button):
             leaderboard_button.disabled = yandex_sdk.enabled and not yandex_sdk.ready
 
+        if is_instance_valid(auth_button):
+            auth_button.visible = yandex_sdk.enabled and yandex_sdk.ready and not yandex_sdk.is_authorized()
+
         if is_instance_valid(leaderboard_overlay) and leaderboard_overlay.visible:
             var entries: Array = yandex_sdk.consume_leaderboard()
             if not entries.is_empty():
@@ -172,6 +177,10 @@ func _notification(what: int) -> void:
     if what == NOTIFICATION_WM_CLOSE_REQUEST:
         _save_game()
         get_tree().quit()
+    elif what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+        AudioServer.set_bus_mute(AudioServer.get_bus_index("Master"), true)
+    elif what == NOTIFICATION_APPLICATION_FOCUS_IN:
+        AudioServer.set_bus_mute(AudioServer.get_bus_index("Master"), false)
 
 func _build_ui() -> void:
     var bg := ColorRect.new()
@@ -236,6 +245,22 @@ func _build_ui() -> void:
     rewarded_button.disabled = true
     rewarded_button.pressed.connect(_on_rewarded_ad_pressed)
     header.add_child(rewarded_button)
+
+    auth_button = Button.new()
+    auth_button.text = "ВОЙТИ"
+    auth_button.custom_minimum_size = Vector2(90, 38)
+    auth_button.add_theme_font_size_override("font_size", 13)
+    auth_button.visible = false
+    auth_button.pressed.connect(_show_auth_dialog)
+    header.add_child(auth_button)
+
+    auth_dialog = ConfirmationDialog.new()
+    auth_dialog.title = "Вход в Яндекс"
+    auth_dialog.dialog_text = "Вход нужен только для облачного сохранения и участия в таблице лидеров. Без входа можно продолжать играть как обычно."
+    auth_dialog.ok_button_text = "Войти"
+    auth_dialog.cancel_button_text = "Не сейчас"
+    auth_dialog.confirmed.connect(_confirm_yandex_auth)
+    add_child(auth_dialog)
 
     offline_label = Label.new()
     offline_label.text = ""
@@ -640,6 +665,17 @@ func _render_leaderboard(entries: Array) -> void:
         row.add_child(score)
 
         leaderboard_list.add_child(row)
+
+func _show_auth_dialog() -> void:
+    if not is_instance_valid(yandex_sdk) or not yandex_sdk.ready:
+        return
+    auth_dialog.popup_centered(Vector2i(500, 230))
+
+func _confirm_yandex_auth() -> void:
+    if not is_instance_valid(yandex_sdk) or not yandex_sdk.ready:
+        return
+    event_label.text = "Открываем вход в Яндекс..."
+    yandex_sdk.open_auth_dialog()
 
 func _on_rewarded_ad_pressed() -> void:
     if not is_instance_valid(yandex_sdk) or not yandex_sdk.ready:
