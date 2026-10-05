@@ -21,6 +21,8 @@ var boost_multiplier: float = 1.0
 var boost_time_left: float = 0.0
 var visible_upgrade_count: int = -1
 var cloud_merge_done: bool = false
+var app_has_focus: bool = true
+var audio_is_muted: bool = false
 var rng := RandomNumberGenerator.new()
 
 var upgrades := [
@@ -129,6 +131,9 @@ func _process(delta: float) -> void:
         total_shards += gain
         _check_chapter_unlocks()
     if is_instance_valid(yandex_sdk):
+        if yandex_sdk.ready and not yandex_sdk.game_ready_sent:
+            yandex_sdk.mark_game_ready()
+
         if yandex_sdk.player_ready and not yandex_sdk.cloud_requested:
             yandex_sdk.request_cloud_data()
 
@@ -159,6 +164,8 @@ func _process(delta: float) -> void:
             if not entries.is_empty():
                 _render_leaderboard(entries)
 
+    _update_audio_mute()
+
     bonus_clock -= delta
     if bonus_clock <= 0.0 and not is_instance_valid(rare_bonus_button):
         _spawn_rare_bonus()
@@ -179,9 +186,25 @@ func _notification(what: int) -> void:
         _save_game()
         get_tree().quit()
     elif what == NOTIFICATION_APPLICATION_FOCUS_OUT:
-        AudioServer.set_bus_mute(AudioServer.get_bus_index("Master"), true)
+        app_has_focus = false
+        _update_audio_mute()
     elif what == NOTIFICATION_APPLICATION_FOCUS_IN:
-        AudioServer.set_bus_mute(AudioServer.get_bus_index("Master"), false)
+        app_has_focus = true
+        _update_audio_mute()
+
+func _update_audio_mute() -> void:
+    var ad_open: bool = false
+    if is_instance_valid(yandex_sdk):
+        ad_open = yandex_sdk.is_ad_open()
+
+    var should_mute: bool = not app_has_focus or ad_open
+    if should_mute == audio_is_muted:
+        return
+
+    audio_is_muted = should_mute
+    var master_index: int = AudioServer.get_bus_index("Master")
+    if master_index >= 0:
+        AudioServer.set_bus_mute(master_index, should_mute)
 
 func _build_ui() -> void:
     var bg := ColorRect.new()
