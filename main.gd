@@ -6,6 +6,7 @@ const SfxBank = preload("res://sfx_bank.gd")
 const AmbientFx = preload("res://ambient_fx.gd")
 const MusicBank = preload("res://music_bank.gd")
 const GalleryArtLoader = preload("res://gallery_art_loader.gd")
+const BackgroundLoader = preload("res://background_loader.gd")
 const YandexSdk = preload("res://yandex_sdk.gd")
 
 var shards: float = 0.0
@@ -15,6 +16,8 @@ var auto_rate: float = 0.0
 var crit_chance: float = 0.05
 var crit_multiplier: float = 5.0
 var current_chapter: int = 0
+var active_character: int = 0
+var auto_tick_clock: float = 0.0
 var last_unix: int = 0
 var autosave_clock: float = 0.0
 var boost_multiplier: float = 1.0
@@ -41,19 +44,19 @@ var upgrades := [
 ]
 
 var chapters := [
-    {"need":0.0, "title":"Глава I — Первое отражение", "subtitle":"Архив оживает и показывает первое устойчивое отражение.", "story":"Ты находишь повреждённый Архив. Он не помнит, кто его создал, но просит одно: собирать осколки и возвращать утраченные отражения.", "symbol":"◇", "reward":"Судзунэ Хорикита", "art":"res://assets/gallery/01_horikita.png"},
-    {"need":100.0, "title":"Глава II — Тёплый сигнал", "subtitle":"Осколки складываются в новое воспоминание.", "story":"Второе отражение приходит вместе с голосом: «Не доверяй Архиву полностью». Сообщение обрывается прежде, чем ты успеваешь ответить.", "symbol":"✦", "reward":"Хонами Ичиносэ", "art":"res://assets/gallery/02_ichinose.png"},
-    {"need":1000.0, "title":"Глава III — Лунный архив", "subtitle":"В памяти появляется мир, где всё решалось одним выбором.", "story":"Ты замечаешь странность: Архив не просто восстанавливает изображения. Он оценивает их и будто бы составляет собственную коллекцию.", "symbol":"☾", "reward":"Кагуя Синомия", "art":"res://assets/gallery/03_kaguya.png"},
-    {"need":10000.0, "title":"Глава IV — Красная линия", "subtitle":"Стабилизатор впервые собирает полноценную сцену.", "story":"На секунду за изображением проявляется чужая комната и силуэт человека у терминала. Лицо скрыто помехами.", "symbol":"◈", "reward":"Асуна Юки", "art":"res://assets/gallery/04_asuna.png"},
-    {"need":100000.0, "title":"Глава V — След чужого мира", "subtitle":"Архив начинает открывать образы из всё более далёких реальностей.", "story":"Система сообщает, что восстановлено меньше половины пути. Ты впервые видишь строку, которой раньше не было: «Поиск совершенного отражения продолжается».", "symbol":"✧", "reward":"Элизабет Лайонес", "art":"res://assets/gallery/05_elizabeth.png"},
-    {"need":1000000.0, "title":"Глава VI — Риск", "subtitle":"Система предлагает опасную ветку восстановления.", "story":"Архив перегревается и начинает выбрасывать редкие осколки. Они нестабильны, зато на несколько секунд резко ускоряют всю систему.", "symbol":"♠", "reward":"Юмэко Джабами", "art":"res://assets/gallery/06_yumeko.png"},
-    {"need":10000000.0, "title":"Глава VII — Серебряный свет", "subtitle":"Отражение удерживается уже без ручной стабилизации.", "story":"Автоматизация работает почти самостоятельно. Но чем меньше ты нужен машине, тем чаще она спрашивает: «Ты действительно хочешь увидеть финал?»", "symbol":"❄", "reward":"Эмилия", "art":"res://assets/gallery/07_emilia.png"},
-    {"need":100000000.0, "title":"Глава VIII — Долгая память", "subtitle":"Устройство начинает помнить то, что старше его самого.", "story":"В старой памяти находится запись создателя Архива: он хотел собрать самые ценные отражения множества миров и оставить лучшее напоследок.", "symbol":"✤", "reward":"Фрирен", "art":"res://assets/gallery/08_frieren.png"},
-    {"need":1000000000.0, "title":"Глава IX — Тихий вечер", "subtitle":"Архив открывает спокойное отражение, за которым чувствуется скрытая опасность.", "story":"Финальные ячейки защищены отдельным протоколом. Названия следующих наград стёрты намеренно. Архив явно не хочет портить сюрприз.", "symbol":"◆", "reward":"Йор Форджер", "art":"res://assets/gallery/09_yor.png"},
-    {"need":10000000000.0, "title":"Глава X — Свет сцены", "subtitle":"Восстановленное отражение отвечает яркой вспышкой со сцены.", "story":"Внутри ядра появляется шкала «Совершенство», но без процентов. Каждый новый осколок заставляет её сиять всё ярче.", "symbol":"★", "reward":"Руби Хосино", "art":"res://assets/gallery/10_ruby.png"},
-    {"need":100000000000.0, "title":"Глава XI — Звезда архива", "subtitle":"Система впервые удерживает образ даже во время перегрузки ядра.", "story":"До конца остаётся совсем немного. Последние данные зашифрованы одной фразой: «Идеал нельзя описать. Его можно только увидеть».", "symbol":"✺", "reward":"Ай Хосино", "art":"res://assets/gallery/11_ai.png"},
-    {"need":10000000000000.0, "title":"Глава XII — Последняя магия", "subtitle":"Почти все фрагменты заняли свои места.", "story":"Архив подтверждает: следующее отражение — последнее. Ни имени, ни силуэта, ни подсказки. Только абсурдно высокая цена восстановления.", "symbol":"✦", "reward":"Рокси Мигурдия", "art":"res://assets/gallery/12_roxy.png"},
-    {"need":1000000000000000.0, "title":"Глава XIII — Совершенство", "subtitle":"Финальный архив открывается совсем не так, как ожидалось.", "story":"Архив торжественно завершает поиск. После миллиардов, триллионов и квадриллиона осколков система без единой доли сомнения объявляет: «Совершенное отражение найдено». Спорить с ней уже поздно.", "symbol":"∞", "reward":"Аянокоджи", "art":"res://assets/gallery/13_ayanokoji.png"}
+    {"need":0.0, "title":"Глава I — Первое отражение", "subtitle":"Архив оживает и показывает первое устойчивое отражение.", "story":"Ты находишь повреждённый Архив. Он не помнит, кто его создал, но просит одно: собирать осколки и возвращать утраченные отражения.", "symbol":"◇", "reward":"Судзунэ Хорикита", "rarity":"Обычный", "art":"res://assets/gallery/01_horikita.png", "background":"res://assets/backgrounds/01_horikita.webp", "bonus_kind":"all_income", "bonus_value":0.08, "bonus_text":"+8% ко всему доходу", "quote":"«Слишком много шума. Но твой прогресс... не такой уж и плохой.»"},
+    {"need":100.0, "title":"Глава II — Тёплый сигнал", "subtitle":"Осколки складываются в новое воспоминание.", "story":"Второе отражение приходит вместе с голосом: «Не доверяй Архиву полностью». Сообщение обрывается прежде, чем ты успеваешь ответить.", "symbol":"✦", "reward":"Хонами Ичиносэ", "rarity":"Редкий", "art":"res://assets/gallery/02_ichinose.png", "background":"res://assets/backgrounds/02_ichinose.webp", "bonus_kind":"auto_income", "bonus_value":0.12, "bonus_text":"+12% к пассивному доходу", "quote":"«Я всегда рядом. Спасибо, что проводишь это время со мной...»"},
+    {"need":1000.0, "title":"Глава III — Лунный архив", "subtitle":"В памяти появляется мир, где всё решалось одним выбором.", "story":"Ты замечаешь странность: Архив не просто восстанавливает изображения. Он оценивает их и будто бы составляет собственную коллекцию.", "symbol":"☾", "reward":"Кагуя Синомия", "rarity":"Эпический", "art":"res://assets/gallery/03_kaguya.png", "background":"res://assets/backgrounds/03_kaguya.webp", "bonus_kind":"auto_double_chance", "bonus_value":0.18, "bonus_text":"18% шанс удвоить автофарм", "quote":"«Побеждает не тот, кто спешит, а тот, кто всё просчитывает.»"},
+    {"need":10000.0, "title":"Глава IV — Красная линия", "subtitle":"Стабилизатор впервые собирает полноценную сцену.", "story":"На секунду за изображением проявляется чужая комната и силуэт человека у терминала. Лицо скрыто помехами.", "symbol":"◈", "reward":"Асуна Юки", "rarity":"Эпический", "art":"res://assets/gallery/04_asuna.png", "background":"res://assets/backgrounds/04_asuna.webp", "bonus_kind":"click_power", "bonus_value":0.35, "bonus_text":"+35% к силе клика", "quote":"«Я буду рядом. Мы обязательно дойдём до конца.»"},
+    {"need":100000.0, "title":"Глава V — След чужого мира", "subtitle":"Архив начинает открывать образы из всё более далёких реальностей.", "story":"Система сообщает, что восстановлено меньше половины пути. Ты впервые видишь строку, которой раньше не было: «Поиск совершенного отражения продолжается».", "symbol":"✧", "reward":"Элизабет Лайонес", "rarity":"Эпический", "art":"res://assets/gallery/05_elizabeth.png", "background":"res://assets/backgrounds/05_elizabeth.webp", "bonus_kind":"upgrade_discount", "bonus_value":0.12, "bonus_text":"−12% к стоимости улучшений", "quote":"«Я всегда буду рядом. Пока есть надежда, мы можем идти дальше.»"},
+    {"need":1000000.0, "title":"Глава VI — Риск", "subtitle":"Система предлагает опасную ветку восстановления.", "story":"Архив перегревается и начинает выбрасывать редкие осколки. Они нестабильны, зато на несколько секунд резко ускоряют всю систему.", "symbol":"♠", "reward":"Юмэко Джабами", "rarity":"Эпический", "art":"res://assets/gallery/06_yumeko.png", "background":"res://assets/backgrounds/06_yumeko.webp", "bonus_kind":"resonance_frequency", "bonus_value":0.25, "bonus_text":"+25% к частоте Резонанса", "quote":"«Риск — это не угроза. Это то, что делает жизнь по-настоящему интересной.»"},
+    {"need":10000000.0, "title":"Глава VII — Серебряный свет", "subtitle":"Отражение удерживается уже без ручной стабилизации.", "story":"Автоматизация работает почти самостоятельно. Но чем меньше ты нужен машине, тем чаще она спрашивает: «Ты действительно хочешь увидеть финал?»", "symbol":"❄", "reward":"Эмилия", "rarity":"Эпический", "art":"res://assets/gallery/07_emilia.png", "background":"res://assets/backgrounds/07_emilia.webp", "bonus_kind":"resonance_duration", "bonus_value":0.40, "bonus_text":"+40% к длительности Резонанса", "quote":"«Я хочу быть рядом. Всегда. В этом мире и в любом другом.»"},
+    {"need":100000000.0, "title":"Глава VIII — Долгая память", "subtitle":"Устройство начинает помнить то, что старше его самого.", "story":"В старой памяти находится запись создателя Архива: он хотел собрать самые ценные отражения множества миров и оставить лучшее напоследок.", "symbol":"✤", "reward":"Фрирен", "rarity":"Эпический", "art":"res://assets/gallery/08_frieren.png", "background":"res://assets/backgrounds/08_frieren.webp", "bonus_kind":"offline_income", "bonus_value":1.00, "bonus_text":"+100% к офлайн-доходу", "quote":"«Время течёт. Но хорошие воспоминания всегда остаются рядом.»"},
+    {"need":1000000000.0, "title":"Глава IX — Тихий вечер", "subtitle":"Архив открывает спокойное отражение, за которым чувствуется скрытая опасность.", "story":"Финальные ячейки защищены отдельным протоколом. Названия следующих наград стёрты намеренно. Архив явно не хочет портить сюрприз.", "symbol":"◆", "reward":"Йор Форджер", "rarity":"Эпический", "art":"res://assets/gallery/09_yor.png", "background":"res://assets/backgrounds/09_yor.webp", "bonus_kind":"crit_power", "bonus_value":0.60, "bonus_text":"+60% к силе критического клика", "quote":"«Я просто обычная жена. Но ради тех, кого я люблю, я могу стать кем угодно.»"},
+    {"need":10000000000.0, "title":"Глава X — Свет сцены", "subtitle":"Восстановленное отражение отвечает яркой вспышкой со сцены.", "story":"Внутри ядра появляется шкала «Совершенство», но без процентов. Каждый новый осколок заставляет её сиять всё ярче.", "symbol":"★", "reward":"Руби Хосино", "rarity":"Эпический", "art":"res://assets/gallery/10_ruby.png", "background":"res://assets/backgrounds/10_ruby.webp", "bonus_kind":"task_reward", "bonus_value":0.50, "bonus_text":"+50% к наградам за задания", "quote":"«Я хочу, чтобы ещё больше людей увидели мир, который я люблю! Ведь сиять вместе — это так здорово!»"},
+    {"need":100000000000.0, "title":"Глава XI — Звезда архива", "subtitle":"Система впервые удерживает образ даже во время перегрузки ядра.", "story":"До конца остаётся совсем немного. Последние данные зашифрованы одной фразой: «Идеал нельзя описать. Его можно только увидеть».", "symbol":"✺", "reward":"Ай Хосино", "rarity":"Эпический", "art":"res://assets/gallery/11_ai.png", "background":"res://assets/backgrounds/11_ai.webp", "bonus_kind":"all_income", "bonus_value":0.25, "bonus_text":"+25% ко всему доходу", "quote":"«Я хочу, чтобы как можно больше людей полюбили меня! Ведь я — айдол!»"},
+    {"need":10000000000000.0, "title":"Глава XII — Последняя магия", "subtitle":"Почти все фрагменты заняли свои места.", "story":"Архив подтверждает: следующее отражение — последнее. Ни имени, ни силуэта, ни подсказки. Только абсурдно высокая цена восстановления.", "symbol":"✦", "reward":"Рокси Мигурдия", "rarity":"Эпический", "art":"res://assets/gallery/12_roxy.png", "background":"res://assets/backgrounds/12_roxy.webp", "bonus_kind":"auto_efficiency", "bonus_value":0.35, "bonus_text":"+35% к эффективности автоматизаций", "quote":"«Магия — это не только сила. Это путь, который делает мир чуть шире.»"},
+    {"need":1000000000000000.0, "title":"Глава XIII — Совершенство", "subtitle":"Финальный архив открывается совсем не так, как ожидалось.", "story":"Архив торжественно завершает поиск. После миллиардов, триллионов и квадриллиона осколков система без единой доли сомнения объявляет: «Совершенное отражение найдено». Спорить с ней уже поздно.", "symbol":"∞", "reward":"Аянокоджи", "rarity":"Легендарный", "art":"res://assets/gallery/13_ayanokoji.png", "background":"res://assets/backgrounds/13_ayanokoji.webp", "bonus_kind":"perfection", "bonus_value":1.00, "bonus_text":"+100% ко всему доходу, +100% к клику и +100% к офлайн-доходу", "quote":"«Иногда самый сильный просто наблюдает.»"}
 ]
 
 var shard_label: Label
@@ -126,10 +129,16 @@ func _process(delta: float) -> void:
             event_label.text = "Резонанс угас. Система вернулась в обычный режим."
 
     if auto_rate > 0.0:
-        var gain: float = auto_rate * _effective_multiplier() * delta
-        shards += gain
-        total_shards += gain
-        _check_chapter_unlocks()
+        auto_tick_clock += delta
+        while auto_tick_clock >= 1.0:
+            auto_tick_clock -= 1.0
+            var gain: float = auto_rate * _auto_income_multiplier() * boost_multiplier
+            if _active_bonus_kind() == "auto_double_chance" and rng.randf() < _active_bonus_value():
+                gain *= 2.0
+                event_label.text = "КАГУЯ: автофарм удвоен на этот цикл."
+            shards += gain
+            total_shards += gain
+            _check_chapter_unlocks()
     if is_instance_valid(yandex_sdk):
         if yandex_sdk.ready and not yandex_sdk.game_ready_sent:
             yandex_sdk.mark_game_ready()
@@ -169,7 +178,7 @@ func _process(delta: float) -> void:
     bonus_clock -= delta
     if bonus_clock <= 0.0 and not is_instance_valid(rare_bonus_button):
         _spawn_rare_bonus()
-        bonus_clock = rng.randf_range(22.0, 38.0)
+        bonus_clock = rng.randf_range(22.0, 38.0) / _resonance_frequency_multiplier()
 
     autosave_clock += delta
     if autosave_clock >= AUTOSAVE_INTERVAL:
@@ -544,49 +553,42 @@ func _rebuild_gallery_cards() -> void:
     for child in gallery_grid.get_children():
         child.queue_free()
 
-    var unlocked_count: int = 0
     for i in range(chapters.size()):
-        var ch = chapters[i]
-        var unlocked: bool = total_shards >= float(ch["need"])
-        if not unlocked:
+        if i > current_chapter:
             continue
-
-        unlocked_count += 1
+        var ch = chapters[i]
         var card := Button.new()
-        card.custom_minimum_size = Vector2(245, 104)
+        card.custom_minimum_size = Vector2(245, 118)
         card.alignment = HORIZONTAL_ALIGNMENT_LEFT
-        card.add_theme_font_size_override("font_size", 15)
-        card.text = "%s\n%s" % [ch["reward"], ch["title"]]
+        card.add_theme_font_size_override("font_size", 14)
+        var active_mark: String = "  •  АКТИВЕН" if i == active_character else ""
+        card.text = "%s%s\n%s\n%s" % [ch["reward"], active_mark, ch["rarity"], ch["bonus_text"]]
         var art_path: String = String(ch["art"])
         var texture: Texture2D = GalleryArtLoader.load_texture(art_path)
         if texture != null:
             card.icon = texture
             card.expand_icon = true
-        card.pressed.connect(_show_gallery_entry.bind(i))
+        card.pressed.connect(_select_character.bind(i))
         gallery_grid.add_child(card)
 
-    if unlocked_count == 0:
-        var empty := Label.new()
-        empty.text = "Архив пока пуст. Первое отражение ещё не восстановлено."
-        empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-        empty.add_theme_font_size_override("font_size", 18)
-        empty.add_theme_color_override("font_color", Color("8795ba"))
-        gallery_grid.add_child(empty)
+func _select_character(index: int) -> void:
+    if index < 0 or index > current_chapter or index >= chapters.size():
+        return
+    active_character = index
+    var ch = chapters[active_character]
+    event_label.text = "Активный персонаж: %s  •  %s" % [ch["reward"], ch["bonus_text"]]
+    _show_gallery_entry(index)
+    _refresh_all()
+    _rebuild_gallery_cards()
+    _save_game()
 
 func _show_gallery_entry(index: int) -> void:
+    if index < 0 or index > current_chapter or index >= chapters.size():
+        return
     var ch = chapters[index]
     var art_path: String = String(ch["art"])
-    gallery_preview.texture = null
-
-    if ResourceLoader.exists(art_path):
-        var texture = load(art_path)
-        if texture is Texture2D:
-            gallery_preview.texture = texture
-            gallery_preview_text.text = "%s\n%s" % [ch["reward"], ch["subtitle"]]
-        else:
-            gallery_preview_text.text = "%s\nИллюстрация готовится." % ch["reward"]
-    else:
-        gallery_preview_text.text = "%s\nИллюстрация готовится." % ch["reward"]
+    gallery_preview.texture = GalleryArtLoader.load_texture(art_path)
+    gallery_preview_text.text = "%s  •  %s\n%s\n%s\n\n%s" % [ch["reward"], ch["rarity"], ch["bonus_text"], ch["subtitle"], ch["quote"]]
     sfx_bank.play("open")
 
 func _build_leaderboard_overlay() -> void:
@@ -901,10 +903,10 @@ func _upgrade_style(can_buy: bool) -> StyleBoxFlat:
     return style
 
 func _on_core_pressed() -> void:
-    var amount: float = click_power * _effective_multiplier()
+    var amount: float = click_power * _click_income_multiplier() * boost_multiplier
     var critical: bool = rng.randf() < crit_chance
     if critical:
-        amount *= crit_multiplier
+        amount *= crit_multiplier * _critical_power_multiplier()
     shards += amount
     total_shards += amount
     event_label.text = ("КРИТИЧЕСКИЙ ИМПУЛЬС! +%s" if critical else "+%s осколков") % _compact(amount)
@@ -1101,7 +1103,7 @@ func _spawn_level_up(upgrade_name: String) -> void:
 
 func _upgrade_cost(index: int) -> float:
     var up = upgrades[index]
-    return float(up["base"]) * pow(float(up["growth"]), int(up["count"]))
+    return float(up["base"]) * pow(float(up["growth"]), int(up["count"])) * _upgrade_cost_multiplier()
 
 func _recalculate_stats() -> void:
     click_power = 1.0
@@ -1120,6 +1122,9 @@ func _check_chapter_unlocks() -> void:
             unlocked = i
     if unlocked > current_chapter:
         current_chapter = unlocked
+        active_character = unlocked
+        var task_reward: float = maxf(50.0, float(chapters[unlocked]["need"]) * 0.05) * _task_reward_multiplier()
+        shards += task_reward
         _chapter_reveal()
 
 func _chapter_reveal() -> void:
@@ -1237,12 +1242,13 @@ func _spawn_rare_bonus() -> void:
 func _collect_rare_bonus(button: Button) -> void:
     if not is_instance_valid(button):
         return
-    var reward: float = maxf(click_power * 20.0, maxf(25.0, auto_rate * 8.0))
+    var reward: float = maxf(click_power * 20.0, maxf(25.0, auto_rate * 8.0)) * _all_income_multiplier()
+    var duration: float = 15.0 * _resonance_duration_multiplier()
     shards += reward
     total_shards += reward
-    event_label.text = "РЕЗОНАНС! Доход удвоен на 15 секунд. +%s осколков" % _compact(reward)
+    event_label.text = "РЕЗОНАНС! Доход удвоен на %.0f секунд. +%s осколков" % [duration, _compact(reward)]
     boost_multiplier = 2.0
-    boost_time_left = 15.0
+    boost_time_left = duration
     sfx_bank.play("bonus")
     _spawn_float_text(reward, true)
     _spawn_click_particles(true)
@@ -1265,44 +1271,99 @@ func _refresh_all() -> void:
     _refresh_chapter_progress()
     _rebuild_upgrade_buttons()
 
-func _collection_multiplier() -> float:
-    return 1.0 + float(current_chapter) * 0.08
+func _active_bonus_kind() -> String:
+    return String(chapters[clampi(active_character, 0, chapters.size() - 1)]["bonus_kind"])
+
+func _active_bonus_value() -> float:
+    return float(chapters[clampi(active_character, 0, chapters.size() - 1)]["bonus_value"])
+
+func _all_income_multiplier() -> float:
+    var kind: String = _active_bonus_kind()
+    if kind == "all_income":
+        return 1.0 + _active_bonus_value()
+    if kind == "perfection":
+        return 2.0
+    return 1.0
+
+func _click_income_multiplier() -> float:
+    var result: float = _all_income_multiplier()
+    if _active_bonus_kind() == "click_power":
+        result *= 1.0 + _active_bonus_value()
+    elif _active_bonus_kind() == "perfection":
+        result *= 2.0
+    return result
+
+func _auto_income_multiplier() -> float:
+    var result: float = _all_income_multiplier()
+    var kind: String = _active_bonus_kind()
+    if kind == "auto_income" or kind == "auto_efficiency":
+        result *= 1.0 + _active_bonus_value()
+    return result
+
+func _critical_power_multiplier() -> float:
+    return 1.0 + _active_bonus_value() if _active_bonus_kind() == "crit_power" else 1.0
+
+func _upgrade_cost_multiplier() -> float:
+    return 1.0 - _active_bonus_value() if _active_bonus_kind() == "upgrade_discount" else 1.0
+
+func _resonance_frequency_multiplier() -> float:
+    return 1.0 + _active_bonus_value() if _active_bonus_kind() == "resonance_frequency" else 1.0
+
+func _resonance_duration_multiplier() -> float:
+    return 1.0 + _active_bonus_value() if _active_bonus_kind() == "resonance_duration" else 1.0
+
+func _offline_income_multiplier() -> float:
+    var result: float = 1.0
+    if _active_bonus_kind() == "offline_income":
+        result *= 1.0 + _active_bonus_value()
+    elif _active_bonus_kind() == "perfection":
+        result *= 2.0
+    return result
+
+func _task_reward_multiplier() -> float:
+    return 1.0 + _active_bonus_value() if _active_bonus_kind() == "task_reward" else 1.0
 
 func _effective_multiplier() -> float:
-    return _collection_multiplier() * boost_multiplier
+    return _all_income_multiplier() * boost_multiplier
 
 func _refresh_topbar() -> void:
     shard_label.text = "Осколки: %s" % _compact(shards)
     total_label.text = "Всего: %s" % _compact(total_shards)
-    click_label.text = "Клик: +%s" % _compact(click_power * _effective_multiplier())
-    auto_label.text = "/сек: %s" % _compact(auto_rate * _effective_multiplier())
-    var collection_text: String = "Коллекция ×%.2f" % _collection_multiplier()
+    click_label.text = "Клик: +%s" % _compact(click_power * _click_income_multiplier() * boost_multiplier)
+    var shown_auto: float = auto_rate * _auto_income_multiplier() * boost_multiplier
+    if _active_bonus_kind() == "auto_double_chance":
+        shown_auto *= 1.0 + _active_bonus_value()
+    auto_label.text = "/сек: %s" % _compact(shown_auto)
+    var active = chapters[active_character]
+    var character_text: String = "%s  •  %s" % [active["reward"], active["bonus_text"]]
     if boost_time_left > 0.0:
-        boost_label.text = "%s  •  ✦ РЕЗОНАНС ×2  •  %.1f сек." % [collection_text, boost_time_left]
+        boost_label.text = "%s  •  ✦ РЕЗОНАНС ×2  •  %.1f сек." % [character_text, boost_time_left]
     else:
-        boost_label.text = collection_text
+        boost_label.text = character_text
 
 func _refresh_chapter() -> void:
-    var ch = chapters[current_chapter]
-    chapter_label.text = ch["title"]
-    chapter_subtitle.text = ch["subtitle"]
-    chapter_symbol.text = ch["symbol"]
-    core_button.text = ch["symbol"]
-    core_button.tooltip_text = "Текущее отражение: %s" % ch["reward"]
+    active_character = clampi(active_character, 0, current_chapter)
+    var progress_ch = chapters[current_chapter]
+    var active_ch = chapters[active_character]
+    chapter_label.text = progress_ch["title"]
+    chapter_subtitle.text = "%s\nАктивный персонаж: %s — %s" % [progress_ch["subtitle"], active_ch["reward"], active_ch["bonus_text"]]
+    chapter_symbol.text = progress_ch["symbol"]
+    core_button.text = progress_ch["symbol"]
+    core_button.tooltip_text = "%s  •  %s" % [active_ch["reward"], active_ch["bonus_text"]]
 
     if is_instance_valid(current_art):
-        current_art.texture = null
-        var art_path: String = String(ch["art"])
-        var texture: Texture2D = GalleryArtLoader.load_texture(art_path)
-        if texture != null:
-            current_art.texture = texture
-            if is_instance_valid(background_art):
-                background_art.texture = texture
-                background_art.modulate.a = 0.0
-                var background_reveal := create_tween()
-                background_reveal.tween_property(background_art, "modulate:a", 0.28, 0.8)
+        current_art.texture = GalleryArtLoader.load_texture(String(active_ch["art"]))
 
-    var hue: float = float(current_chapter) / maxf(1.0, float(chapters.size() - 1))
+    if is_instance_valid(background_art):
+        var bg_texture: Texture2D = BackgroundLoader.load_texture(String(active_ch["background"]))
+        if bg_texture != null:
+            background_art.texture = bg_texture
+            background_art.modulate = Color(1.0, 1.0, 1.0, 1.0)
+        else:
+            background_art.texture = GalleryArtLoader.load_texture(String(active_ch["art"]))
+            background_art.modulate = Color(0.34, 0.37, 0.52, 0.28)
+
+    var hue: float = float(active_character) / maxf(1.0, float(chapters.size() - 1))
     core_glow.color = Color.from_hsv(0.58 + hue * 0.18, 0.55, 1.0, 0.10)
 
 func _refresh_chapter_progress() -> void:
@@ -1340,6 +1401,7 @@ func _save_game() -> void:
         "shards": shards,
         "total_shards": total_shards,
         "current_chapter": current_chapter,
+        "active_character": active_character,
         "upgrade_counts": counts,
         "last_unix": int(Time.get_unix_time_from_system())
     }
@@ -1363,7 +1425,8 @@ func _load_game() -> void:
         return
     shards = float(parsed.get("shards", 0.0))
     total_shards = float(parsed.get("total_shards", 0.0))
-    current_chapter = int(parsed.get("current_chapter", 0))
+    current_chapter = clampi(int(parsed.get("current_chapter", 0)), 0, chapters.size() - 1)
+    active_character = clampi(int(parsed.get("active_character", current_chapter)), 0, current_chapter)
     last_unix = int(parsed.get("last_unix", Time.get_unix_time_from_system()))
     var counts = parsed.get("upgrade_counts", [])
     for i in range(min(counts.size(), upgrades.size())):
@@ -1377,6 +1440,7 @@ func _merge_cloud_data(data: Dictionary) -> void:
     shards = float(data.get("shards", shards))
     total_shards = float(data.get("total_shards", total_shards))
     current_chapter = clampi(int(data.get("current_chapter", current_chapter)), 0, chapters.size() - 1)
+    active_character = clampi(int(data.get("active_character", current_chapter)), 0, current_chapter)
     last_unix = cloud_time
 
     var counts = data.get("upgrade_counts", [])
@@ -1396,7 +1460,7 @@ func _apply_offline_progress() -> void:
     var seconds: int = clampi(now - last_unix, 0, 8 * 60 * 60)
     if seconds <= 0:
         return
-    var gain: float = auto_rate * float(seconds)
+    var gain: float = auto_rate * float(seconds) * _auto_income_multiplier() * _offline_income_multiplier()
     shards += gain
     total_shards += gain
     offline_label.text = "Пока тебя не было: +%s осколков за %d мин." % [_compact(gain), int(seconds / 60)]
